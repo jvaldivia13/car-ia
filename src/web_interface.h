@@ -19,210 +19,286 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>KARIM Car Control</title>
   <style>
+    :root {
+      --bg-0: #08080f;
+      --bg-1: #12121f;
+      --bg-2: #191933;
+      --panel-border: #2c2c54;
+      --text: #f4f4fb;
+      --text-dim: #8d8db3;
+      --accent: #6f6fe8;
+      --accent-bright: #a3a3f7;
+      --danger: #ff3b5c;
+      --good: #2fe6a0;
+      --warn: #ffcf4d;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f0f1a;
-      color: #fff;
-      min-height: 100vh;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 900px 500px at 50% -10%, rgba(111,111,232,0.20), transparent 60%),
+        radial-gradient(ellipse 700px 500px at 100% 100%, rgba(47,230,160,0.08), transparent 55%),
+        var(--bg-0);
       display: flex;
-      flex-direction: column;
+      justify-content: center;
       align-items: center;
       overflow: hidden;
+      overscroll-behavior: none;
       user-select: none;
       -webkit-user-select: none;
       touch-action: none;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
-    .header {
+    @media (prefers-reduced-motion: no-preference) {
+      .console { animation: rise 0.5s ease-out; }
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .stage { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; padding: 14px; }
+
+    .console {
       width: 100%;
-      padding: 20px 16px 10px;
-      text-align: center;
-      background: linear-gradient(180deg, #1a1a30 0%, transparent 100%);
-    }
-    .header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: 2px; }
-    .header .sub { font-size: 0.75rem; color: #888; margin-top: 2px; }
-    .status-bar {
+      max-width: 460px;
+      max-height: 100%;
+      overflow-y: auto;
+      background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      border: 1px solid var(--panel-border);
+      border-radius: 22px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+      padding: 18px;
       display: flex;
+      flex-direction: column;
       gap: 16px;
-      justify-content: center;
-      font-size: 0.75rem;
-      color: #aaa;
-      margin: 4px 0 10px;
+      touch-action: pan-y;
     }
-    .status-dot {
-      display: inline-block;
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      margin-right: 4px;
+
+    /* ===== TOPBAR ===== */
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 10px; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--accent), #3a3a9c);
+      box-shadow: 0 4px 14px rgba(111,111,232,0.4);
+      font-size: 1.1rem;
     }
-    .dot-online { background: #00e676; box-shadow: 0 0 6px #00e676; }
-    .dot-offline { background: #ff5252; box-shadow: 0 0 6px #ff5252; }
-    .dot-moving { background: #ffd740; box-shadow: 0 0 6px #ffd740; animation: pulse 0.6s infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .brand-text h1 { font-size: 0.95rem; font-weight: 800; letter-spacing: 0.06em; }
+    .brand-text .brand-sub { font-size: 0.68rem; color: var(--text-dim); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg-2);
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      padding: 5px 10px 5px 8px;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+    .dot-online { background: var(--good); box-shadow: 0 0 6px var(--good); }
+    .dot-offline { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .dot-moving { background: var(--warn); box-shadow: 0 0 6px var(--warn); animation: pulse 0.6s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    /* ===== DECK (reflows: column on phones, row on wide screens) ===== */
+    .deck { display: flex; flex-direction: column; gap: 16px; }
+
+    .panel {
+      background: var(--bg-2);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 18px;
+    }
 
     /* ===== D-PAD ===== */
-    .dpad-area {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      padding: 10px;
-    }
+    .dpad-panel { display: flex; flex-direction: column; align-items: center; gap: 12px; }
     .dpad {
+      position: relative;
       display: grid;
-      grid-template-columns: repeat(3, min(84px, 24vw));
-      grid-template-rows: repeat(3, min(84px, 24vw));
-      gap: 10px;
+      grid-template-columns: repeat(3, minmax(58px, 78px));
+      grid-template-rows: repeat(3, minmax(58px, 78px));
+      gap: 8px;
+    }
+    .dpad::before {
+      content: '';
+      position: absolute; inset: -20px;
+      background: radial-gradient(circle, rgba(111,111,232,0.16), transparent 70%);
+      z-index: -1;
     }
     .dpad-btn {
-      border: 2px solid #6666cc;
-      border-radius: 16px;
-      background: radial-gradient(circle at 35% 35%, #5555bb, #2a2a70);
-      color: #fff;
-      font-size: 1.8rem;
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      background: linear-gradient(155deg, #23234a, #1a1a38);
+      color: var(--text);
+      font-size: 1.5rem;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      box-shadow: 0 4px 16px rgba(50,50,150,0.3), inset 0 2px 4px rgba(255,255,255,0.1);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+      transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
       touch-action: none;
       user-select: none;
     }
     .dpad-btn.pressed {
-      background: radial-gradient(circle at 35% 35%, #7777dd, #3a3a90);
-      box-shadow: 0 0 24px rgba(100,100,220,0.7);
+      background: linear-gradient(155deg, var(--accent-bright), var(--accent));
+      border-color: var(--accent-bright);
+      color: #10101f;
+      transform: scale(0.94);
+      box-shadow: 0 0 22px rgba(163,163,247,0.6);
     }
     .dpad-fwd    { grid-column: 2; grid-row: 1; }
     .dpad-left   { grid-column: 1; grid-row: 2; }
     .dpad-center {
       grid-column: 2; grid-row: 2;
       display: flex; align-items: center; justify-content: center;
-      color: #444477; font-size: 1.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 4px;
     }
     .dpad-right  { grid-column: 3; grid-row: 2; }
     .dpad-bwd    { grid-column: 2; grid-row: 3; }
 
-    /* ===== CONTROLES INFERIORES ===== */
-    .controls-bottom {
-      width: 100%;
-      padding: 12px 20px 30px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
+    .hint {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.5;
+      max-width: 30ch;
     }
 
-    .speed-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    /* ===== CONTROLS PANEL ===== */
+    .controls-panel { display: flex; flex-direction: column; gap: 18px; justify-content: center; }
+
+    .field-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+    .field-head label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+    .speed-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--accent-bright);
     }
-    .speed-row label { font-size: 0.8rem; color: #888; min-width: 60px; }
-    .speed-row input[type=range] {
-      flex: 1;
+
+    input[type=range] {
       -webkit-appearance: none;
-      height: 4px;
-      border-radius: 2px;
-      background: linear-gradient(90deg, #333366, #6666cc);
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--bg-1), var(--accent));
       outline: none;
     }
-    .speed-row input[type=range]::-webkit-slider-thumb {
+    input[type=range]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 24px; height: 24px;
+      width: 26px; height: 26px;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #5555bb, #2a2a70);
-      border: 2px solid #6666cc;
+      background: linear-gradient(155deg, var(--accent-bright), var(--accent));
+      border: 3px solid var(--bg-1);
       cursor: pointer;
-      box-shadow: 0 0 12px rgba(50,50,150,0.4);
+      box-shadow: 0 2px 10px rgba(111,111,232,0.6);
     }
-    .speed-value { font-size: 0.9rem; font-weight: 600; color: #fff; min-width: 32px; text-align: right; }
-
-    .btn-row {
-      display: flex;
-      gap: 10px;
-    }
-    .btn {
-      flex: 1;
-      padding: 12px 0;
-      border: none;
-      border-radius: 12px;
-      font-size: 0.85rem;
-      font-weight: 600;
+    input[type=range]::-moz-range-thumb {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(155deg, var(--accent-bright), var(--accent));
+      border: 3px solid var(--bg-1);
       cursor: pointer;
-      transition: all 0.2s;
-      letter-spacing: 0.5px;
     }
-    .btn:active { transform: scale(0.96); }
+    .speed-ticks { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.62rem; letter-spacing: 0.06em; color: var(--text-dim); }
 
     .btn-stop {
-      background: #ff1744;
+      width: 100%;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 15px 0;
+      border: none;
+      border-radius: 14px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
       color: #fff;
-      box-shadow: 0 4px 16px rgba(255,23,68,0.3);
+      cursor: pointer;
+      background: linear-gradient(155deg, #ff5473, var(--danger));
+      box-shadow: 0 6px 20px rgba(255,59,92,0.35);
+      transition: transform 0.08s ease;
     }
-    .btn-stop:active { background: #d50000; }
+    .btn-stop:active { transform: scale(0.97); }
+    .btn-stop-icon { font-size: 1rem; }
 
-    .btn-auto {
-      background: #2a2a70;
-      color: #aaa;
-      box-shadow: 0 4px 16px rgba(50,50,150,0.2);
+    /* ===== RESPONSIVE: landscape / tablet / desktop ===== */
+    @media (min-width: 640px) {
+      .console { max-width: 720px; padding: 24px; }
+      .deck { flex-direction: row; align-items: stretch; }
+      .dpad-panel { flex: 0 0 auto; justify-content: center; }
+      .controls-panel { flex: 1; }
+      .dpad { grid-template-columns: repeat(3, 80px); grid-template-rows: repeat(3, 80px); }
     }
-    .btn-auto.active {
-      background: #00e676;
-      color: #000;
-      box-shadow: 0 4px 20px rgba(0,230,118,0.4);
-    }
-
-    .distance-row {
-      text-align: center;
-      font-size: 0.8rem;
-      color: #6666aa;
-    }
-    .distance-row span { font-weight: 600; color: #8888cc; }
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <h1>✦ KARIM CAR</h1>
-    <div class="sub">Control inalámbrico</div>
-    <div class="status-bar">
-      <span><span class="status-dot dot-online" id="statusDot"></span><span id="statusText">Conectado</span></span>
-      <span id="directionText">—</span>
-    </div>
-  </div>
+  <div class="stage">
+    <main class="console">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">✦</span>
+          <div class="brand-text">
+            <h1>KARIM CAR</h1>
+            <span class="brand-sub">Control remoto</span>
+          </div>
+        </div>
+        <div class="status-pill">
+          <span class="status-dot dot-online" id="statusDot"></span>
+          <span id="statusText">Conectado</span>
+        </div>
+      </header>
 
-  <!-- D-PAD -->
-  <div class="dpad-area">
-    <div class="dpad">
-      <button class="dpad-btn dpad-fwd" data-dir="forward">▲</button>
-      <button class="dpad-btn dpad-left" data-dir="left">◀</button>
-      <div class="dpad-center">✦</div>
-      <button class="dpad-btn dpad-right" data-dir="right">▶</button>
-      <button class="dpad-btn dpad-bwd" data-dir="backward">▼</button>
-    </div>
-  </div>
+      <div class="deck">
+        <!-- D-PAD -->
+        <section class="panel dpad-panel">
+          <div class="dpad">
+            <button class="dpad-btn dpad-fwd" data-dir="forward" aria-label="Adelante">▲</button>
+            <button class="dpad-btn dpad-left" data-dir="left" aria-label="Izquierda">◀</button>
+            <div class="dpad-center" id="directionText">—</div>
+            <button class="dpad-btn dpad-right" data-dir="right" aria-label="Derecha">▶</button>
+            <button class="dpad-btn dpad-bwd" data-dir="backward" aria-label="Atrás">▼</button>
+          </div>
+          <p class="hint">Mantén presionado para moverte · también funciona con flechas / WASD</p>
+        </section>
 
-  <!-- CONTROLES -->
-  <div class="controls-bottom">
-    <div class="speed-row">
-      <label>Velocidad</label>
-      <input type="range" id="speedSlider" min="80" max="255" value="180">
-      <span class="speed-value" id="speedDisplay">180</span>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-stop" id="stopBtn">⏹ DETENER</button>
-    </div>
-    <!-- Modo autónomo y distancia desactivados: dependen del sonar,
-         desconectado por conflicto de GPIO (ver config.h) -->
-    <!--
-    <div class="btn-row">
-      <button class="btn btn-auto" id="autoBtn">🤖 AUTÓNOMO</button>
-    </div>
-    <div class="distance-row">
-      Distancia: <span id="distanceDisplay">—</span> cm
-    </div>
-    -->
+        <!-- CONTROLES -->
+        <section class="panel controls-panel">
+          <div class="field speed-field">
+            <div class="field-head">
+              <label for="speedSlider">Velocidad</label>
+              <span class="speed-value" id="speedDisplay">180</span>
+            </div>
+            <input type="range" id="speedSlider" min="80" max="255" value="180">
+            <div class="speed-ticks"><span>LENTO</span><span>RÁPIDO</span></div>
+          </div>
+
+          <button class="btn-stop" id="stopBtn">
+            <span class="btn-stop-icon">⏹</span><span>DETENER</span>
+          </button>
+
+          <!-- Modo autónomo y distancia desactivados: dependen del sonar,
+               desconectado por conflicto de GPIO (ver config.h) -->
+          <!--
+          <button class="btn-auto" id="autoBtn">🤖 AUTÓNOMO</button>
+          <div class="distance-row">Distancia: <span id="distanceDisplay">—</span> cm</div>
+          -->
+        </section>
+      </div>
+    </main>
   </div>
 
   <script>
@@ -308,6 +384,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         if (autoMode) return;
         e.preventDefault();
         btn.setPointerCapture(e.pointerId);
+        if (navigator.vibrate) navigator.vibrate(12);
         startDir(dir, btn);
       });
       btn.addEventListener('pointerup', doStop);
