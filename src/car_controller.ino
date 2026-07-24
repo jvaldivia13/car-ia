@@ -55,10 +55,13 @@ unsigned long lastDistancePoll = 0;
 float lastDistance = 0;
 
 // Dead man's switch: si no llega un comando de movimiento nuevo dentro de
-// este plazo (cliente desconectado, pestaña cerrada, etc.) se detiene el
-// carro solo. 0 = sin movimiento activo.
+// este plazo (cliente desconectado, pestaña cerrada, WiFi caído, etc.) se
+// detiene el carro solo. 0 = sin movimiento activo.
+// El cliente reenvía cada 80ms mientras mantiene presionada una dirección,
+// así que 1500ms tolera varios paquetes perdidos / una micro-caída de WiFi
+// sin frenar el carro de golpe en medio de un movimiento normal.
 volatile unsigned long lastCommandMillis = 0;
-const unsigned long COMMAND_TIMEOUT_MS = 500;
+const unsigned long COMMAND_TIMEOUT_MS = 1500;
 
 // ===== SETUP =====
 void setup() {

@@ -63,7 +63,7 @@ pio run --target upload --upload-port 192.168.1.100
 ## Uso
 
 1. Abre `http://<IP_DEL_ESP32>` en tu navegador
-2. **Joystick táctil**: arrastra para mover el carro
+2. **Botones direccionales (D-pad)**: mantén presionado ▲▼◀▶ para mover el carro
 3. **Teclado**: flechas direccionales o WASD + espacio para detener
 4. **Velocidad**: slider para ajustar velocidad
 5. **Modo Autónomo**: el carro esquiva obstáculos solo

@@ -61,8 +61,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .dot-moving { background: #ffd740; box-shadow: 0 0 6px #ffd740; animation: pulse 0.6s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    /* ===== JOYSTICK ===== */
-    .joystick-area {
+    /* ===== D-PAD ===== */
+    .dpad-area {
       flex: 1;
       display: flex;
       align-items: center;
@@ -70,56 +70,39 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       width: 100%;
       padding: 10px;
     }
-    .joystick-container {
-      position: relative;
-      width: min(280px, 75vw);
-      height: min(280px, 75vw);
-      border-radius: 50%;
-      background: radial-gradient(circle, #1e1e3a 0%, #14142a 100%);
-      border: 2px solid #333366;
-      box-shadow: 0 0 40px rgba(50,50,150,0.3), inset 0 0 30px rgba(0,0,0,0.5);
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, min(84px, 24vw));
+      grid-template-rows: repeat(3, min(84px, 24vw));
+      gap: 10px;
     }
-    .joystick-knob {
-      position: absolute;
-      top: 50%; left: 50%;
-      width: 80px; height: 80px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #5555bb, #2a2a70);
+    .dpad-btn {
       border: 2px solid #6666cc;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      transition: none;
+      border-radius: 16px;
+      background: radial-gradient(circle at 35% 35%, #5555bb, #2a2a70);
+      color: #fff;
+      font-size: 1.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(50,50,150,0.3), inset 0 2px 4px rgba(255,255,255,0.1);
+      touch-action: none;
+      user-select: none;
     }
-    .direction-label {
-      position: absolute;
-      font-size: 0.65rem;
-      color: #5555aa;
-      font-weight: 600;
-      letter-spacing: 1px;
+    .dpad-btn.pressed {
+      background: radial-gradient(circle at 35% 35%, #7777dd, #3a3a90);
+      box-shadow: 0 0 24px rgba(100,100,220,0.7);
     }
-    .dl-fwd { top: 12px; left: 50%; transform: translateX(-50%); }
-    .dl-bwd { bottom: 12px; left: 50%; transform: translateX(-50%); }
-    .dl-left { left: 12px; top: 50%; transform: translateY(-50%); }
-    .dl-right { right: 12px; top: 50%; transform: translateY(-50%); }
-
-    .direction-arrows {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 90%; height: 90%;
-      pointer-events: none;
-      opacity: 0.15;
+    .dpad-fwd    { grid-column: 2; grid-row: 1; }
+    .dpad-left   { grid-column: 1; grid-row: 2; }
+    .dpad-center {
+      grid-column: 2; grid-row: 2;
+      display: flex; align-items: center; justify-content: center;
+      color: #444477; font-size: 1.4rem;
     }
-    .dir-arrow {
-      position: absolute;
-      font-size: 1.4rem;
-      color: #6666cc;
-    }
-    .da-up { top: 20%; left: 50%; transform: translateX(-50%); }
-    .da-down { bottom: 20%; left: 50%; transform: translateX(-50%); }
-    .da-left { left: 15%; top: 50%; transform: translateY(-50%); }
-    .da-right { right: 15%; top: 50%; transform: translateY(-50%); }
+    .dpad-right  { grid-column: 3; grid-row: 2; }
+    .dpad-bwd    { grid-column: 2; grid-row: 3; }
 
     /* ===== CONTROLES INFERIORES ===== */
     .controls-bottom {
@@ -196,37 +179,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       color: #6666aa;
     }
     .distance-row span { font-weight: 600; color: #8888cc; }
-
-    /* Hidden stop button overlay on joystick */
-    .stop-overlay {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(255,23,68,0.15);
-      z-index: 10;
-      align-items: center;
-      justify-content: center;
-    }
-    .stop-overlay.show { display: flex; }
-    .stop-overlay .big-stop {
-      width: 100px; height: 100px;
-      border-radius: 50%;
-      background: #ff1744;
-      border: none;
-      color: #fff;
-      font-size: 1.2rem;
-      font-weight: 700;
-      box-shadow: 0 0 60px rgba(255,23,68,0.5);
-      cursor: pointer;
-    }
-
-    .connection-status {
-      position: fixed;
-      top: 10px; right: 10px;
-      font-size: 0.65rem;
-      color: #555;
-      z-index: 20;
-    }
   </style>
 </head>
 <body>
@@ -240,26 +192,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <!-- JOYSTICK -->
-  <div class="joystick-area">
-    <div class="joystick-container" id="joystickArea">
-      <div class="joystick-knob" id="joystickKnob"></div>
-      <div class="direction-label dl-fwd">FWD</div>
-      <div class="direction-label dl-bwd">REV</div>
-      <div class="direction-label dl-left">LEFT</div>
-      <div class="direction-label dl-right">RIGHT</div>
-      <div class="direction-arrows">
-        <div class="dir-arrow da-up">▲</div>
-        <div class="dir-arrow da-down">▼</div>
-        <div class="dir-arrow da-left">◀</div>
-        <div class="dir-arrow da-right">▶</div>
-      </div>
+  <!-- D-PAD -->
+  <div class="dpad-area">
+    <div class="dpad">
+      <button class="dpad-btn dpad-fwd" data-dir="forward">▲</button>
+      <button class="dpad-btn dpad-left" data-dir="left">◀</button>
+      <div class="dpad-center">✦</div>
+      <button class="dpad-btn dpad-right" data-dir="right">▶</button>
+      <button class="dpad-btn dpad-bwd" data-dir="backward">▼</button>
     </div>
-  </div>
-
-  <!-- STOP OVERLAY -->
-  <div class="stop-overlay" id="stopOverlay">
-    <button class="big-stop" id="bigStopBtn">STOP</button>
   </div>
 
   <!-- CONTROLES -->
@@ -278,22 +219,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <div class="connection-status" id="connStatus">●</div>
-
   <script>
     // ===== CONFIG =====
     const FETCH_BASE = '';
+    const SEND_INTERVAL = 80;          // ms entre reenvíos mientras se mantiene presionado
+    const MAX_CONSECUTIVE_FAILURES = 5; // ~400ms sin respuesta -> dejamos de insistir localmente
 
-    let currentDir = 'stop';
     let autoMode = false;
     let speed = 180;
-    let isTouching = false;
-    let lastSend = 0;
-    const SEND_INTERVAL = 80; // ms entre envíos
+    let activeDir = null;   // dirección que se está enviando en este momento (o null)
+    let holdInterval = null;
+    let consecutiveFailures = 0;
 
     // ===== DOM REFS =====
-    const knob = document.getElementById('joystickKnob');
-    const area = document.getElementById('joystickArea');
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const directionText = document.getElementById('directionText');
@@ -301,17 +239,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const speedDisplay = document.getElementById('speedDisplay');
     const stopBtn = document.getElementById('stopBtn');
     const autoBtn = document.getElementById('autoBtn');
-    const bigStopBtn = document.getElementById('bigStopBtn');
-    const stopOverlay = document.getElementById('stopOverlay');
     const distanceDisplay = document.getElementById('distanceDisplay');
+    const dpadButtons = document.querySelectorAll('.dpad-btn[data-dir]');
 
     // ===== FETCH HELPERS =====
     // No hay WebSocket en el firmware (solo HTTP), así que el estado de
     // conexión se deriva de si las llamadas a la API responden o no.
     function markConnected() {
-      statusDot.className = currentDir === 'stop' ? 'status-dot dot-online' : 'status-dot dot-moving';
+      consecutiveFailures = 0;
+      statusDot.className = activeDir ? 'status-dot dot-moving' : 'status-dot dot-online';
       statusText.textContent = 'Conectado';
     }
+
     function markDisconnected() {
       statusDot.className = 'status-dot dot-offline';
       statusText.textContent = 'Desconectado';
@@ -322,125 +261,54 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         await fetch(FETCH_BASE + url, { method: 'GET' });
         markConnected();
       } catch (e) {
+        consecutiveFailures++;
         markDisconnected();
+        // Sin red: dejamos de insistir localmente. El ESP32 se detendrá
+        // solo por su propio timeout de seguridad aunque nuestro "stop"
+        // nunca le llegue.
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES && activeDir) {
+          clearInterval(holdInterval);
+          activeDir = null;
+          dpadButtons.forEach(b => b.classList.remove('pressed'));
+          directionText.textContent = 'SIN CONEXIÓN';
+        }
       }
     }
 
-    // ===== JOYSTICK TOUCH =====
-    function getJoystickDir(clientX, clientY) {
-      const rect = area.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = clientX - cx;
-      const dy = clientY - cy;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const maxDist = rect.width / 2 - 10;
-
-      // Limit knob position
-      const clamped = Math.min(dist, maxDist);
-      const angle = Math.atan2(dy, dx);
-      const knobX = (clamped / maxDist) * 55 * Math.cos(angle);
-      const knobY = (clamped / maxDist) * 55 * Math.sin(angle);
-      knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
-
-      if (dist < 20) return 'stop';
-
-      // Deadzone angles: 8-direction.
-      // atan2 usa coordenadas de pantalla (Y crece hacia abajo), así que
-      // "arriba" (FWD) cae en 270°, "derecha" en 0°, "abajo" (REV) en 90°
-      // e "izquierda" en 180°.
-      const degrees = (angle * 180 / Math.PI + 360) % 360;
-
-      if (degrees >= 225 && degrees < 315) return 'forward';
-      if (degrees >= 315 || degrees < 45) return 'right';
-      if (degrees >= 45 && degrees < 135) return 'backward';
-      return 'left';
+    // ===== D-PAD =====
+    function startDir(dir, btn) {
+      if (autoMode || activeDir === dir) return;
+      activeDir = dir;
+      directionText.textContent = dir.toUpperCase();
+      statusDot.className = 'status-dot dot-moving';
+      dpadButtons.forEach(b => b.classList.toggle('pressed', b.dataset.dir === dir));
+      api(`/${dir}?speed=${speed}`);
+      clearInterval(holdInterval);
+      holdInterval = setInterval(() => api(`/${activeDir}?speed=${speed}`), SEND_INTERVAL);
     }
 
-    function resetKnob() {
-      knob.style.transform = 'translate(-50%, -50%)';
-      currentDir = 'stop';
+    function doStop() {
+      activeDir = null;
+      clearInterval(holdInterval);
+      dpadButtons.forEach(b => b.classList.remove('pressed'));
       directionText.textContent = '—';
       statusDot.className = 'status-dot dot-online';
-      if (!autoMode) api('/stop');
-    }
-
-    // Touch events
-    area.addEventListener('touchstart', (e) => {
-      if (autoMode) return;
-      e.preventDefault();
-      isTouching = true;
-      stopOverlay.classList.add('show');
-      const t = e.changedTouches[0];
-      currentDir = getJoystickDir(t.clientX, t.clientY);
-      if (currentDir !== 'stop') directionText.textContent = currentDir.toUpperCase();
-      sendCommand();
-    });
-
-    area.addEventListener('touchmove', (e) => {
-      if (autoMode) return;
-      e.preventDefault();
-      const t = e.changedTouches[0];
-      const newDir = getJoystickDir(t.clientX, t.clientY);
-      if (newDir !== currentDir) {
-        currentDir = newDir;
-        if (currentDir !== 'stop') directionText.textContent = currentDir.toUpperCase();
-      }
-      sendCommand();
-    });
-
-    area.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      isTouching = false;
-      stopOverlay.classList.remove('show');
-      resetKnob();
-    });
-
-    // Mouse events (for desktop testing)
-    let mouseDown = false;
-    area.addEventListener('mousedown', (e) => {
-      if (autoMode) return;
-      mouseDown = true;
-      currentDir = getJoystickDir(e.clientX, e.clientY);
-      if (currentDir !== 'stop') directionText.textContent = currentDir.toUpperCase();
-      sendCommand();
-    });
-    document.addEventListener('mousemove', (e) => {
-      if (!mouseDown || autoMode) return;
-      const newDir = getJoystickDir(e.clientX, e.clientY);
-      if (newDir !== currentDir) {
-        currentDir = newDir;
-        if (currentDir !== 'stop') directionText.textContent = currentDir.toUpperCase();
-      }
-      sendCommand();
-    });
-    document.addEventListener('mouseup', () => {
-      if (!mouseDown) return;
-      mouseDown = false;
-      resetKnob();
-    });
-
-    function sendCommand() {
-      const now = Date.now();
-      if (now - lastSend < SEND_INTERVAL) return;
-      lastSend = now;
-      if (currentDir !== 'stop') {
-        api(`/${currentDir}?speed=${speed}`);
-      } else {
-        api('/stop');
-      }
-    }
-
-    // ===== STOP BUTTON =====
-    function doStop() {
-      resetKnob();
-      stopOverlay.classList.remove('show');
-      isTouching = false;
-      mouseDown = false;
       api('/stop');
     }
+
+    dpadButtons.forEach((btn) => {
+      const dir = btn.dataset.dir;
+      btn.addEventListener('pointerdown', (e) => {
+        if (autoMode) return;
+        e.preventDefault();
+        btn.setPointerCapture(e.pointerId);
+        startDir(dir, btn);
+      });
+      btn.addEventListener('pointerup', doStop);
+      btn.addEventListener('pointercancel', doStop);
+    });
+
     stopBtn.addEventListener('click', doStop);
-    bigStopBtn.addEventListener('click', doStop);
 
     // ===== SPEED =====
     speedSlider.addEventListener('input', () => {
@@ -455,7 +323,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       autoBtn.classList.toggle('active', autoMode);
       autoBtn.textContent = autoMode ? '🤖 AUTÓNOMO (ACTIVO)' : '🤖 AUTÓNOMO';
       if (autoMode) {
-        resetKnob();
+        doStop();
         api('/auto/on');
       } else {
         api('/auto/off');
@@ -463,31 +331,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     });
 
-    // Keyboard controls
+    // ===== KEYBOARD =====
+    const keyMap = {
+      'ArrowUp': 'forward', 'w': 'forward', 'W': 'forward',
+      'ArrowDown': 'backward', 's': 'backward', 'S': 'backward',
+      'ArrowLeft': 'left', 'a': 'left', 'A': 'left',
+      'ArrowRight': 'right', 'd': 'right', 'D': 'right',
+      ' ': 'stop'
+    };
+
     document.addEventListener('keydown', (e) => {
-      if (autoMode) return;
-      const keyMap = {
-        'ArrowUp': 'forward', 'w': 'forward', 'W': 'forward',
-        'ArrowDown': 'backward', 's': 'backward', 'S': 'backward',
-        'ArrowLeft': 'left', 'a': 'left', 'A': 'left',
-        'ArrowRight': 'right', 'd': 'right', 'D': 'right',
-        ' ': 'stop'
-      };
+      if (autoMode || e.repeat) return;
       const dir = keyMap[e.key];
       if (!dir) return;
       e.preventDefault();
       if (dir === 'stop') { doStop(); return; }
-      currentDir = dir;
-      directionText.textContent = dir.toUpperCase();
-      statusDot.className = 'status-dot dot-moving';
-      api(`/${dir}?speed=${speed}`);
+      startDir(dir);
     });
 
     document.addEventListener('keyup', (e) => {
       if (autoMode) return;
-      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','W','s','S','a','A','d','D'].includes(e.key)) {
-        doStop();
-      }
+      if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
     // Poll de distancia (también sirve de heartbeat de conexión)
