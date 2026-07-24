@@ -5,20 +5,21 @@
 //
 // HARDWARE:
 //   - ESP32 + L298N (puente H) + 2 motores DC
-//   - HC-SR04 (ultrasonido) para modo autónomo
+//   - HC-SR04 (ultrasonido) - DESACTIVADO por ahora, ver nota abajo
 //
-// CONEXIONES:
+// CONEXIONES (cableado físico real):
 //   ESP32        → L298N
-//   GPIO 16      → IN1
-//   GPIO 17      → IN2
-//   GPIO 21 (PWM) → ENA
-//   GPIO 18      → IN3
-//   GPIO 19      → IN4
-//   GPIO 22 (PWM) → ENB
+//   GPIO 14      → IN1
+//   GPIO 27      → IN2
+//   GPIO 12 (PWM) → ENA
+//   GPIO 26      → IN3
+//   GPIO 25      → IN4
+//   GPIO 13 (PWM) → ENB
 //
-//   ESP32        → HC-SR04
-//   GPIO 26      → Trig
-//   GPIO 27      → Echo
+//   HC-SR04: desactivado. GPIO 26/27, que originalmente iban a Trig/Echo,
+//   quedaron ocupados por IN3/IN2 del motor. Todo el código del sonar y
+//   el modo autónomo (que depende de él) está comentado más abajo hasta
+//   que se recableé el sensor a pines libres.
 //
 // PRIMER FLASH (vía USB):
 //   1. Conectar ESP32 por USB
@@ -38,21 +39,22 @@
 #include <WebServer.h>
 #include "config.h"
 #include "motor_control.h"
-#include "sonar.h"
+// #include "sonar.h" // DESACTIVADO: ver nota de cableado arriba
 #include "web_interface.h"
 
 // ===== GLOBALES =====
 MotorController motors;
-Sonar sonar;
+// Sonar sonar; // DESACTIVADO
 WebServer server(WEB_PORT);
 WebInterface webUI;
 
-bool autonomousMode = false;
-unsigned long lastAutoUpdate = 0;
-const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas
+// ===== MODO AUTÓNOMO (DESACTIVADO, depende del sonar) =====
+// bool autonomousMode = false;
+// unsigned long lastAutoUpdate = 0;
+// const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas
 
-unsigned long lastDistancePoll = 0;
-float lastDistance = 0;
+// unsigned long lastDistancePoll = 0;
+// float lastDistance = 0;
 
 // Dead man's switch: si no llega un comando de movimiento nuevo dentro de
 // este plazo (cliente desconectado, pestaña cerrada, WiFi caído, etc.) se
@@ -73,7 +75,7 @@ void setup() {
 
   // Inicializar hardware
   motors.begin();
-  sonar.begin();
+  // sonar.begin(); // DESACTIVADO
 
   // Conectar WiFi
   connectWiFi();
@@ -82,7 +84,7 @@ void setup() {
   setupOTA();
 
   // Iniciar servidor web
-  webUI.begin(&motors, &sonar, &autonomousMode, &lastCommandMillis);
+  webUI.begin(&motors, &lastCommandMillis);
 
   Serial.println("\n✅ Sistema listo!");
   Serial.print("  → Abre http://");
@@ -98,24 +100,25 @@ void loop() {
   // Web server
   webUI.handleClient();
 
-  // Modo autónomo
-  if (autonomousMode) {
-    if (millis() - lastAutoUpdate > AUTO_INTERVAL) {
-      lastAutoUpdate = millis();
-      runAutonomous();
-    }
-  } else if (lastCommandMillis != 0 && millis() - lastCommandMillis > COMMAND_TIMEOUT_MS) {
+  // Modo autónomo: DESACTIVADO (depende del sonar, ver nota de cableado arriba)
+  // if (autonomousMode) {
+  //   if (millis() - lastAutoUpdate > AUTO_INTERVAL) {
+  //     lastAutoUpdate = millis();
+  //     runAutonomous();
+  //   }
+  // } else
+  if (lastCommandMillis != 0 && millis() - lastCommandMillis > COMMAND_TIMEOUT_MS) {
     // Dead man's switch: sin comandos nuevos del cliente, detener por seguridad.
     motors.stop();
     lastCommandMillis = 0;
   }
 
-  // Poll de distancia para la interfaz (cada 500ms)
-  if (millis() - lastDistancePoll > 500) {
-    lastDistancePoll = millis();
-    lastDistance = sonar.readDistance();
-    if (lastDistance < 0) lastDistance = 999;
-  }
+  // Poll de distancia: DESACTIVADO (depende del sonar)
+  // if (millis() - lastDistancePoll > 500) {
+  //   lastDistancePoll = millis();
+  //   lastDistance = sonar.readDistance();
+  //   if (lastDistance < 0) lastDistance = 999;
+  // }
 }
 
 // ===== WIFI =====
@@ -178,30 +181,31 @@ void setupOTA() {
   Serial.println("  → OTA listo (hostname: " + String(OTA_HOSTNAME) + ")");
 }
 
-// ===== MODO AUTÓNOMO (simple wall-avoider) =====
-void runAutonomous() {
-  float dist = sonar.readDistance();
-
-  // Si no hay eco, asumir libre
-  if (dist < 0) dist = 999;
-
-  if (dist < OBSTACLE_DISTANCE_CM) {
-    // Obstáculo detectado - esquivar
-    motors.stop();
-    delay(150);
-
-    // Gira siempre a la izquierda: solo hay un sonar fijo al frente,
-    // no hay forma de medir qué lado está más despejado.
-    motors.left();
-    motors.setSpeed(SPEED_DEFAULT);
-    delay(TURN_DURATION_MS);
-    motors.stop();
-
-    // Avanzar
-    motors.forward();
-  } else {
-    // Camino libre
-    motors.forward();
-    motors.setSpeed(SPEED_DEFAULT);
-  }
-}
+// ===== MODO AUTÓNOMO (simple wall-avoider) - DESACTIVADO =====
+// Depende del sonar, que está desconectado por el conflicto de GPIO 26/27.
+// void runAutonomous() {
+//   float dist = sonar.readDistance();
+//
+//   // Si no hay eco, asumir libre
+//   if (dist < 0) dist = 999;
+//
+//   if (dist < OBSTACLE_DISTANCE_CM) {
+//     // Obstáculo detectado - esquivar
+//     motors.stop();
+//     delay(150);
+//
+//     // Gira siempre a la izquierda: solo hay un sonar fijo al frente,
+//     // no hay forma de medir qué lado está más despejado.
+//     motors.left();
+//     motors.setSpeed(SPEED_DEFAULT);
+//     delay(TURN_DURATION_MS);
+//     motors.stop();
+//
+//     // Avanzar
+//     motors.forward();
+//   } else {
+//     // Camino libre
+//     motors.forward();
+//     motors.setSpeed(SPEED_DEFAULT);
+//   }
+// }

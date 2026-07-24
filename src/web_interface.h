@@ -212,11 +212,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     </div>
     <div class="btn-row">
       <button class="btn btn-stop" id="stopBtn">⏹ DETENER</button>
+    </div>
+    <!-- Modo autónomo y distancia desactivados: dependen del sonar,
+         desconectado por conflicto de GPIO (ver config.h) -->
+    <!--
+    <div class="btn-row">
       <button class="btn btn-auto" id="autoBtn">🤖 AUTÓNOMO</button>
     </div>
     <div class="distance-row">
       Distancia: <span id="distanceDisplay">—</span> cm
     </div>
+    -->
   </div>
 
   <script>
@@ -238,8 +244,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const speedSlider = document.getElementById('speedSlider');
     const speedDisplay = document.getElementById('speedDisplay');
     const stopBtn = document.getElementById('stopBtn');
-    const autoBtn = document.getElementById('autoBtn');
-    const distanceDisplay = document.getElementById('distanceDisplay');
+    // const autoBtn = document.getElementById('autoBtn');             // DESACTIVADO
+    // const distanceDisplay = document.getElementById('distanceDisplay'); // DESACTIVADO
     const dpadButtons = document.querySelectorAll('.dpad-btn[data-dir]');
 
     // ===== FETCH HELPERS =====
@@ -317,19 +323,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       api(`/speed?value=${speed}`);
     });
 
-    // ===== AUTONOMOUS =====
-    autoBtn.addEventListener('click', () => {
-      autoMode = !autoMode;
-      autoBtn.classList.toggle('active', autoMode);
-      autoBtn.textContent = autoMode ? '🤖 AUTÓNOMO (ACTIVO)' : '🤖 AUTÓNOMO';
-      if (autoMode) {
-        doStop();
-        api('/auto/on');
-      } else {
-        api('/auto/off');
-        api('/stop');
-      }
-    });
+    // ===== AUTONOMOUS ===== DESACTIVADO: depende del sonar (ver config.h)
+    // autoBtn.addEventListener('click', () => {
+    //   autoMode = !autoMode;
+    //   autoBtn.classList.toggle('active', autoMode);
+    //   autoBtn.textContent = autoMode ? '🤖 AUTÓNOMO (ACTIVO)' : '🤖 AUTÓNOMO';
+    //   if (autoMode) {
+    //     doStop();
+    //     api('/auto/on');
+    //   } else {
+    //     api('/auto/off');
+    //     api('/stop');
+    //   }
+    // });
 
     // ===== KEYBOARD =====
     const keyMap = {
@@ -354,17 +360,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
-    // Poll de distancia (también sirve de heartbeat de conexión)
-    setInterval(async () => {
-      try {
-        const r = await fetch('/dist');
-        const d = await r.text();
-        if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
-        markConnected();
-      } catch (e) {
-        markDisconnected();
-      }
-    }, 2000);
+    // Poll de distancia: DESACTIVADO junto con el sonar (/dist ya no existe
+    // en el servidor). El estado de conexión ahora solo se actualiza cuando
+    // se envía un comando de movimiento o velocidad.
+    // setInterval(async () => {
+    //   try {
+    //     const r = await fetch('/dist');
+    //     const d = await r.text();
+    //     if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
+    //     markConnected();
+    //   } catch (e) {
+    //     markDisconnected();
+    //   }
+    // }, 2000);
 
     console.log('KARIM Car Controller loaded 🚗');
   </script>
@@ -377,8 +385,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 class WebInterface {
   private:
     MotorController* motors;
-    Sonar* sonar;
-    bool* autoModePtr;
+    // Sonar* sonar;       // DESACTIVADO: ver nota de cableado en car_controller.ino
+    // bool* autoModePtr;  // DESACTIVADO junto con el modo autónomo
     volatile unsigned long* lastCmdMillis;
 
     void handleRoot() {
@@ -436,28 +444,27 @@ class WebInterface {
       server.send(200, "text/plain", String(s));
     }
 
-    void handleDistance() {
-      float d = sonar->readDistance();
-      if (d < 0) d = 999;
-      server.send(200, "text/plain", String(d));
-    }
-
-    void handleAutoOn() {
-      *autoModePtr = true;
-      server.send(200, "text/plain", "auto_on");
-    }
-
-    void handleAutoOff() {
-      *autoModePtr = false;
-      motors->stop();
-      server.send(200, "text/plain", "auto_off");
-    }
+    // DESACTIVADO: dependen del sonar / modo autónomo (ver car_controller.ino)
+    // void handleDistance() {
+    //   float d = sonar->readDistance();
+    //   if (d < 0) d = 999;
+    //   server.send(200, "text/plain", String(d));
+    // }
+    //
+    // void handleAutoOn() {
+    //   *autoModePtr = true;
+    //   server.send(200, "text/plain", "auto_on");
+    // }
+    //
+    // void handleAutoOff() {
+    //   *autoModePtr = false;
+    //   motors->stop();
+    //   server.send(200, "text/plain", "auto_off");
+    // }
 
   public:
-    void begin(MotorController* m, Sonar* s, bool* autoFlag, volatile unsigned long* lastCmd) {
+    void begin(MotorController* m, volatile unsigned long* lastCmd) {
       motors = m;
-      sonar = s;
-      autoModePtr = autoFlag;
       lastCmdMillis = lastCmd;
 
       server.on("/",              std::bind(&WebInterface::handleRoot,     this));
@@ -466,9 +473,9 @@ class WebInterface {
       server.on("/left",          std::bind(&WebInterface::handleLeft,     this));
       server.on("/right",         std::bind(&WebInterface::handleRight,    this));
       server.on("/stop",          std::bind(&WebInterface::handleStop,     this));
-      server.on("/dist",          std::bind(&WebInterface::handleDistance, this));
-      server.on("/auto/on",       std::bind(&WebInterface::handleAutoOn,   this));
-      server.on("/auto/off",      std::bind(&WebInterface::handleAutoOff,  this));
+      // server.on("/dist",     std::bind(&WebInterface::handleDistance, this)); // DESACTIVADO
+      // server.on("/auto/on",  std::bind(&WebInterface::handleAutoOn,   this)); // DESACTIVADO
+      // server.on("/auto/off", std::bind(&WebInterface::handleAutoOff, this)); // DESACTIVADO
       server.on("/speed",         std::bind(&WebInterface::handleSpeed,    this));
 
       server.begin();
