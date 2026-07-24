@@ -1,0 +1,14 @@
+.pio/
+.pioenvs/
+.piolibdeps/
+__pycache__/
+*.pyc
+*.o
+*.d
+*.a
+*.elf
+*.bin
+/sdkconfig
+.vscode/
+.clang_complete
+.gcc-flags.json
