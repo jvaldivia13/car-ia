@@ -25,11 +25,9 @@ const char* OTA_HOSTNAME  = "karim-car";
 #define MOTOR_B_ENB  13   // PWM - velocidad
 
 // ===================== SENSOR ULTRASONIDO (HC-SR04) =====================
-// DESACTIVADO por ahora: GPIO 26/27 (Trig/Echo originales) quedaron
-// reasignados a IN3/IN2 del motor. Reactivar con pines libres (p.ej.
-// GPIO32/33) el día que se conecte el sonar físicamente.
-// #define SONAR_TRIG   26
-// #define SONAR_ECHO   27
+// Cableado físico real (libres de conflicto con los pines de motor: 12,13,14,25,26,27)
+#define SONAR_TRIG   4
+#define SONAR_ECHO   17
 
 // ===================== VELOCIDADES =====================
 #define SPEED_MIN    80    // velocidad mínima para que se mueva

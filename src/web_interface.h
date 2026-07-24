@@ -234,6 +234,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .btn-stop:active { transform: scale(0.97); }
     .btn-stop-icon { font-size: 1rem; }
 
+    .btn-auto {
+      width: 100%;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 13px 0;
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      cursor: pointer;
+      background: var(--bg-1);
+      transition: transform 0.08s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .btn-auto:active { transform: scale(0.97); }
+    .btn-auto.active {
+      color: #0a1a14;
+      border-color: var(--good);
+      background: linear-gradient(155deg, #4dffc0, var(--good));
+      box-shadow: 0 4px 16px rgba(47,230,160,0.35);
+    }
+
+    .distance-row {
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    .distance-row span {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--accent-bright);
+    }
+
     /* ===== RESPONSIVE: landscape / tablet / desktop ===== */
     @media (min-width: 640px) {
       .console { max-width: 720px; padding: 24px; }
@@ -290,12 +324,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span class="btn-stop-icon">⏹</span><span>DETENER</span>
           </button>
 
-          <!-- Modo autónomo y distancia desactivados: dependen del sonar,
-               desconectado por conflicto de GPIO (ver config.h) -->
-          <!--
-          <button class="btn-auto" id="autoBtn">🤖 AUTÓNOMO</button>
+          <button class="btn-auto" id="autoBtn">
+            <span>🤖</span><span>AUTÓNOMO</span>
+          </button>
+
           <div class="distance-row">Distancia: <span id="distanceDisplay">—</span> cm</div>
-          -->
         </section>
       </div>
     </main>
@@ -320,8 +353,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const speedSlider = document.getElementById('speedSlider');
     const speedDisplay = document.getElementById('speedDisplay');
     const stopBtn = document.getElementById('stopBtn');
-    // const autoBtn = document.getElementById('autoBtn');             // DESACTIVADO
-    // const distanceDisplay = document.getElementById('distanceDisplay'); // DESACTIVADO
+    const autoBtn = document.getElementById('autoBtn');
+    const distanceDisplay = document.getElementById('distanceDisplay');
     const dpadButtons = document.querySelectorAll('.dpad-btn[data-dir]');
 
     // ===== FETCH HELPERS =====
@@ -400,19 +433,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       api(`/speed?value=${speed}`);
     });
 
-    // ===== AUTONOMOUS ===== DESACTIVADO: depende del sonar (ver config.h)
-    // autoBtn.addEventListener('click', () => {
-    //   autoMode = !autoMode;
-    //   autoBtn.classList.toggle('active', autoMode);
-    //   autoBtn.textContent = autoMode ? '🤖 AUTÓNOMO (ACTIVO)' : '🤖 AUTÓNOMO';
-    //   if (autoMode) {
-    //     doStop();
-    //     api('/auto/on');
-    //   } else {
-    //     api('/auto/off');
-    //     api('/stop');
-    //   }
-    // });
+    // ===== AUTONOMOUS =====
+    autoBtn.addEventListener('click', () => {
+      autoMode = !autoMode;
+      autoBtn.classList.toggle('active', autoMode);
+      autoBtn.querySelector('span:last-child').textContent = autoMode ? 'AUTÓNOMO (ACTIVO)' : 'AUTÓNOMO';
+      if (autoMode) {
+        doStop();
+        api('/auto/on');
+      } else {
+        api('/auto/off');
+        api('/stop');
+      }
+    });
 
     // ===== KEYBOARD =====
     const keyMap = {
@@ -437,19 +470,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
-    // Poll de distancia: DESACTIVADO junto con el sonar (/dist ya no existe
-    // en el servidor). El estado de conexión ahora solo se actualiza cuando
-    // se envía un comando de movimiento o velocidad.
-    // setInterval(async () => {
-    //   try {
-    //     const r = await fetch('/dist');
-    //     const d = await r.text();
-    //     if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
-    //     markConnected();
-    //   } catch (e) {
-    //     markDisconnected();
-    //   }
-    // }, 2000);
+    // Poll de distancia (también sirve de heartbeat de conexión)
+    setInterval(async () => {
+      try {
+        const r = await fetch('/dist');
+        const d = await r.text();
+        if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
+        markConnected();
+      } catch (e) {
+        markDisconnected();
+      }
+    }, 2000);
 
     console.log('KARIM Car Controller loaded 🚗');
   </script>
@@ -462,8 +493,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 class WebInterface {
   private:
     MotorController* motors;
-    // Sonar* sonar;       // DESACTIVADO: ver nota de cableado en car_controller.ino
-    // bool* autoModePtr;  // DESACTIVADO junto con el modo autónomo
+    Sonar* sonar;
+    bool* autoModePtr;
     volatile unsigned long* lastCmdMillis;
 
     void handleRoot() {
@@ -521,27 +552,28 @@ class WebInterface {
       server.send(200, "text/plain", String(s));
     }
 
-    // DESACTIVADO: dependen del sonar / modo autónomo (ver car_controller.ino)
-    // void handleDistance() {
-    //   float d = sonar->readDistance();
-    //   if (d < 0) d = 999;
-    //   server.send(200, "text/plain", String(d));
-    // }
-    //
-    // void handleAutoOn() {
-    //   *autoModePtr = true;
-    //   server.send(200, "text/plain", "auto_on");
-    // }
-    //
-    // void handleAutoOff() {
-    //   *autoModePtr = false;
-    //   motors->stop();
-    //   server.send(200, "text/plain", "auto_off");
-    // }
+    void handleDistance() {
+      float d = sonar->readDistance();
+      if (d < 0) d = 999;
+      server.send(200, "text/plain", String(d));
+    }
+
+    void handleAutoOn() {
+      *autoModePtr = true;
+      server.send(200, "text/plain", "auto_on");
+    }
+
+    void handleAutoOff() {
+      *autoModePtr = false;
+      motors->stop();
+      server.send(200, "text/plain", "auto_off");
+    }
 
   public:
-    void begin(MotorController* m, volatile unsigned long* lastCmd) {
+    void begin(MotorController* m, Sonar* s, bool* autoFlag, volatile unsigned long* lastCmd) {
       motors = m;
+      sonar = s;
+      autoModePtr = autoFlag;
       lastCmdMillis = lastCmd;
 
       server.on("/",              std::bind(&WebInterface::handleRoot,     this));
@@ -550,9 +582,9 @@ class WebInterface {
       server.on("/left",          std::bind(&WebInterface::handleLeft,     this));
       server.on("/right",         std::bind(&WebInterface::handleRight,    this));
       server.on("/stop",          std::bind(&WebInterface::handleStop,     this));
-      // server.on("/dist",     std::bind(&WebInterface::handleDistance, this)); // DESACTIVADO
-      // server.on("/auto/on",  std::bind(&WebInterface::handleAutoOn,   this)); // DESACTIVADO
-      // server.on("/auto/off", std::bind(&WebInterface::handleAutoOff, this)); // DESACTIVADO
+      server.on("/dist",          std::bind(&WebInterface::handleDistance, this));
+      server.on("/auto/on",       std::bind(&WebInterface::handleAutoOn,   this));
+      server.on("/auto/off",      std::bind(&WebInterface::handleAutoOff,  this));
       server.on("/speed",         std::bind(&WebInterface::handleSpeed,    this));
 
       server.begin();
