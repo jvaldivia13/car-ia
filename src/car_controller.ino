@@ -54,6 +54,12 @@ const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas
 unsigned long lastDistancePoll = 0;
 float lastDistance = 0;
 
+// Dead man's switch: si no llega un comando de movimiento nuevo dentro de
+// este plazo (cliente desconectado, pestaña cerrada, etc.) se detiene el
+// carro solo. 0 = sin movimiento activo.
+volatile unsigned long lastCommandMillis = 0;
+const unsigned long COMMAND_TIMEOUT_MS = 500;
+
 // ===== SETUP =====
 void setup() {
   Serial.begin(115200);
@@ -73,7 +79,7 @@ void setup() {
   setupOTA();
 
   // Iniciar servidor web
-  webUI.begin(&motors, &sonar, &autonomousMode);
+  webUI.begin(&motors, &sonar, &autonomousMode, &lastCommandMillis);
 
   Serial.println("\n✅ Sistema listo!");
   Serial.print("  → Abre http://");
@@ -95,6 +101,10 @@ void loop() {
       lastAutoUpdate = millis();
       runAutonomous();
     }
+  } else if (lastCommandMillis != 0 && millis() - lastCommandMillis > COMMAND_TIMEOUT_MS) {
+    // Dead man's switch: sin comandos nuevos del cliente, detener por seguridad.
+    motors.stop();
+    lastCommandMillis = 0;
   }
 
   // Poll de distancia para la interfaz (cada 500ms)
@@ -177,7 +187,8 @@ void runAutonomous() {
     motors.stop();
     delay(150);
 
-    // Medir izquierda vs derecha para decidir dirección
+    // Gira siempre a la izquierda: solo hay un sonar fijo al frente,
+    // no hay forma de medir qué lado está más despejado.
     motors.left();
     motors.setSpeed(SPEED_DEFAULT);
     delay(TURN_DURATION_MS);

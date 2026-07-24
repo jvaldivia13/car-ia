@@ -282,10 +282,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     // ===== CONFIG =====
-    const WS_URL = `ws://${window.location.hostname}/ws`;
     const FETCH_BASE = '';
 
-    let ws;
     let currentDir = 'stop';
     let autoMode = false;
     let speed = 180;
@@ -308,41 +306,25 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const distanceDisplay = document.getElementById('distanceDisplay');
 
     // ===== FETCH HELPERS =====
-    async function api(url) {
-      try { await fetch(FETCH_BASE + url, { method: 'GET' }); } catch(e) {}
+    // No hay WebSocket en el firmware (solo HTTP), así que el estado de
+    // conexión se deriva de si las llamadas a la API responden o no.
+    function markConnected() {
+      statusDot.className = currentDir === 'stop' ? 'status-dot dot-online' : 'status-dot dot-moving';
+      statusText.textContent = 'Conectado';
+    }
+    function markDisconnected() {
+      statusDot.className = 'status-dot dot-offline';
+      statusText.textContent = 'Desconectado';
     }
 
-    // ===== WEBSOCKET =====
-    function connectWS() {
-      ws = new WebSocket(WS_URL);
-      ws.onopen = () => {
-        statusDot.className = 'status-dot dot-online';
-        statusText.textContent = 'Conectado';
-      };
-      ws.onclose = () => {
-        statusDot.className = 'status-dot dot-offline';
-        statusText.textContent = 'Desconectado';
-        setTimeout(connectWS, 1000);
-      };
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.distance !== undefined) {
-            distanceDisplay.textContent = data.distance.toFixed(0);
-          }
-          if (data.auto !== undefined) {
-            autoMode = data.auto;
-            autoBtn.classList.toggle('active', autoMode);
-            autoBtn.textContent = autoMode ? '🤖 AUTÓNOMO (ACTIVO)' : '🤖 AUTÓNOMO';
-          }
-          if (data.dir) {
-            directionText.textContent = data.dir.toUpperCase();
-            statusDot.className = data.dir === 'stop' ? 'status-dot dot-online' : 'status-dot dot-moving';
-          }
-        } catch(e) {}
-      };
+    async function api(url) {
+      try {
+        await fetch(FETCH_BASE + url, { method: 'GET' });
+        markConnected();
+      } catch (e) {
+        markDisconnected();
+      }
     }
-    connectWS();
 
     // ===== JOYSTICK TOUCH =====
     function getJoystickDir(clientX, clientY) {
@@ -363,12 +345,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       if (dist < 20) return 'stop';
 
-      // Deadzone angles: 8-direction
+      // Deadzone angles: 8-direction.
+      // atan2 usa coordenadas de pantalla (Y crece hacia abajo), así que
+      // "arriba" (FWD) cae en 270°, "derecha" en 0°, "abajo" (REV) en 90°
+      // e "izquierda" en 180°.
       const degrees = (angle * 180 / Math.PI + 360) % 360;
 
-      if (degrees >= 315 || degrees < 45) return 'forward';
-      if (degrees >= 45 && degrees < 135) return 'right';
-      if (degrees >= 135 && degrees < 225) return 'backward';
+      if (degrees >= 225 && degrees < 315) return 'forward';
+      if (degrees >= 315 || degrees < 45) return 'right';
+      if (degrees >= 45 && degrees < 135) return 'backward';
       return 'left';
     }
 
@@ -461,7 +446,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     speedSlider.addEventListener('input', () => {
       speed = parseInt(speedSlider.value);
       speedDisplay.textContent = speed;
-      api(`/speed/${speed}`);
+      api(`/speed?value=${speed}`);
     });
 
     // ===== AUTONOMOUS =====
@@ -505,13 +490,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
     });
 
-    // Poll distance fallback (for when WS briefly drops)
+    // Poll de distancia (también sirve de heartbeat de conexión)
     setInterval(async () => {
       try {
         const r = await fetch('/dist');
         const d = await r.text();
         if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
-      } catch(e) {}
+        markConnected();
+      } catch (e) {
+        markDisconnected();
+      }
     }, 2000);
 
     console.log('KARIM Car Controller loaded 🚗');
@@ -527,6 +515,7 @@ class WebInterface {
     MotorController* motors;
     Sonar* sonar;
     bool* autoModePtr;
+    volatile unsigned long* lastCmdMillis;
 
     void handleRoot() {
       server.send(200, "text/html", INDEX_HTML);
@@ -537,6 +526,7 @@ class WebInterface {
         motors->setSpeed(server.arg("speed").toInt());
       }
       motors->forward();
+      *lastCmdMillis = millis();
       server.send(200, "text/plain", "forward");
     }
 
@@ -545,6 +535,7 @@ class WebInterface {
         motors->setSpeed(server.arg("speed").toInt());
       }
       motors->backward();
+      *lastCmdMillis = millis();
       server.send(200, "text/plain", "backward");
     }
 
@@ -553,6 +544,7 @@ class WebInterface {
         motors->setSpeed(server.arg("speed").toInt());
       }
       motors->left();
+      *lastCmdMillis = millis();
       server.send(200, "text/plain", "left");
     }
 
@@ -561,16 +553,21 @@ class WebInterface {
         motors->setSpeed(server.arg("speed").toInt());
       }
       motors->right();
+      *lastCmdMillis = millis();
       server.send(200, "text/plain", "right");
     }
 
     void handleStop() {
       motors->stop();
+      *lastCmdMillis = 0;
       server.send(200, "text/plain", "stop");
     }
 
     void handleSpeed() {
-      int s = server.pathArg(0).toInt();
+      // Nota: la ruta usaba "/speed/{s}" pero WebServer.h sin
+      // <uri/UriBraces.h> hace match literal, no wildcard — nunca
+      // coincidía con una petición real. Se usa query param en su lugar.
+      int s = server.arg("value").toInt();
       motors->setSpeed(s);
       server.send(200, "text/plain", String(s));
     }
@@ -593,10 +590,11 @@ class WebInterface {
     }
 
   public:
-    void begin(MotorController* m, Sonar* s, bool* autoFlag) {
+    void begin(MotorController* m, Sonar* s, bool* autoFlag, volatile unsigned long* lastCmd) {
       motors = m;
       sonar = s;
       autoModePtr = autoFlag;
+      lastCmdMillis = lastCmd;
 
       server.on("/",              std::bind(&WebInterface::handleRoot,     this));
       server.on("/forward",       std::bind(&WebInterface::handleForward,  this));
@@ -607,7 +605,7 @@ class WebInterface {
       server.on("/dist",          std::bind(&WebInterface::handleDistance, this));
       server.on("/auto/on",       std::bind(&WebInterface::handleAutoOn,   this));
       server.on("/auto/off",      std::bind(&WebInterface::handleAutoOff,  this));
-      server.on("/speed/{s}",     std::bind(&WebInterface::handleSpeed,    this));
+      server.on("/speed",         std::bind(&WebInterface::handleSpeed,    this));
 
       server.begin();
       Serial.println("  → Servidor HTTP iniciado");

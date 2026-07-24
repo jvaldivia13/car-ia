@@ -5,13 +5,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ===================== WIFI =====================
-const char* WIFI_SSID     = "TU_WIFI_SSID";
-const char* WIFI_PASSWORD = "TU_WIFI_PASSWORD";
+// WIFI_SSID, WIFI_PASSWORD y OTA_PASSWORD viven en secrets.h (gitignored).
+// Si no existe, copia secrets.h.example → secrets.h y completa tus datos.
+#include "secrets.h"
 
 // ===================== OTA =====================
 const char* OTA_HOSTNAME  = "karim-car";
-const char* OTA_PASSWORD  = "karim123";  // contraseña para OTA
 
 // ===================== PINES MOTORES (L298N) =====================
 // Motor A (izquierdo)

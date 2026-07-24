@@ -16,12 +16,31 @@ Primero compila el sketch desde Arduino IDE o PlatformIO:
   PlatformIO:   pio run (genera .pio/build/esp32dev/firmware.bin)
 """
 
-import os, sys, subprocess, socket, time, argparse
+import os, re, sys, subprocess, socket, time, argparse
 
 # === CONFIG ===
 HOSTNAME = "karim-car"
 OTA_PORT = 3232
-OTA_PASSWORD = "karim123"
+OTA_PASSWORD_DEFAULT = "karim123"
+
+SECRETS_PATH = os.path.join(os.path.dirname(__file__), "src", "secrets.h")
+
+
+def load_ota_password():
+    """Lee OTA_PASSWORD desde src/secrets.h para no duplicar el valor
+    a mano en dos archivos. Si no existe, usa el valor por defecto."""
+    try:
+        with open(SECRETS_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        m = re.search(r'OTA_PASSWORD\s*=\s*"([^"]*)"', content)
+        if m:
+            return m.group(1)
+    except FileNotFoundError:
+        pass
+    return OTA_PASSWORD_DEFAULT
+
+
+OTA_PASSWORD = load_ota_password()
 
 # Posibles rutas del binario compilado
 BIN_PATHS = [

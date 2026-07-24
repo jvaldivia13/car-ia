@@ -31,7 +31,7 @@ GPIO 27 → Echo
 
 ## Primer despliegue (USB)
 
-1. Edita `config.h` con tu WiFi y contraseña
+1. Copia `src/secrets.h.example` a `src/secrets.h` y pon tu WiFi y contraseña OTA (ese archivo no se sube a git)
 2. Conecta el ESP32 por USB
 3. Compila y sube:
 
@@ -74,7 +74,9 @@ pio run --target upload --upload-port 192.168.1.100
 ```
 car_controller/
 ├── car_controller.ino      # Main
-├── config.h                # Configuración (WiFi, pines, velocidades)
+├── config.h                # Configuración (pines, velocidades, incluye secrets.h)
+├── secrets.h                # WiFi/OTA reales (gitignored, no existe hasta que lo copies)
+├── secrets.h.example       # Plantilla de secrets.h
 ├── motor_control.h         # Control de motores (L298N)
 ├── sonar.h                 # Sensor ultrasónico (HC-SR04)
 ├── web_interface.h         # Servidor web + interfaz HTML
