@@ -47,9 +47,11 @@ Sonar sonar;
 WebServer server(WEB_PORT);
 WebInterface webUI;
 
-bool autonomousMode = false;
+DriveMode currentMode = MODE_MANUAL;
 unsigned long lastAutoUpdate = 0;
-const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas
+const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas (modo autónomo simple)
+
+unsigned long lastAgenticUpdate = 0;
 
 unsigned long lastDistancePoll = 0;
 float lastDistance = 0;
@@ -82,7 +84,7 @@ void setup() {
   setupOTA();
 
   // Iniciar servidor web
-  webUI.begin(&motors, &sonar, &autonomousMode, &lastCommandMillis);
+  webUI.begin(&motors, &sonar, &currentMode, &lastCommandMillis);
 
   Serial.println("\n✅ Sistema listo!");
   Serial.print("  → Abre http://");
@@ -98,16 +100,37 @@ void loop() {
   // Web server
   webUI.handleClient();
 
-  // Modo autónomo
-  if (autonomousMode) {
-    if (millis() - lastAutoUpdate > AUTO_INTERVAL) {
-      lastAutoUpdate = millis();
-      runAutonomous();
-    }
-  } else if (lastCommandMillis != 0 && millis() - lastCommandMillis > COMMAND_TIMEOUT_MS) {
-    // Dead man's switch: sin comandos nuevos del cliente, detener por seguridad.
+  // Detecta cambios de modo para arrancar cada uno desde un estado limpio
+  static DriveMode lastMode = MODE_MANUAL;
+  if (currentMode != lastMode) {
     motors.stop();
-    lastCommandMillis = 0;
+    if (currentMode == MODE_AGENTIC) resetAgentic();
+    lastMode = currentMode;
+  }
+
+  switch (currentMode) {
+    case MODE_AUTO:
+      if (millis() - lastAutoUpdate > AUTO_INTERVAL) {
+        lastAutoUpdate = millis();
+        runAutonomous();
+      }
+      break;
+
+    case MODE_AGENTIC:
+      if (millis() - lastAgenticUpdate > AGENTIC_INTERVAL_MS) {
+        lastAgenticUpdate = millis();
+        runAgentic();
+      }
+      break;
+
+    case MODE_MANUAL:
+    default:
+      if (lastCommandMillis != 0 && millis() - lastCommandMillis > COMMAND_TIMEOUT_MS) {
+        // Dead man's switch: sin comandos nuevos del cliente, detener por seguridad.
+        motors.stop();
+        lastCommandMillis = 0;
+      }
+      break;
   }
 
   // Poll de distancia para la interfaz (cada 500ms)
@@ -204,4 +227,79 @@ void runAutonomous() {
     motors.forward();
     motors.setSpeed(SPEED_DEFAULT);
   }
+}
+
+// ===== MODO AGÉNTICO (control reactivo: acelera/frena según distancia,
+// decide maniobra en tiempo real, todo sin bloquear con delay()) =====
+enum AgenticState { AGENTIC_CRUISE, AGENTIC_BACKUP, AGENTIC_TURN };
+AgenticState agenticState = AGENTIC_CRUISE;
+unsigned long agenticStateStart = 0;
+int agenticSpeed = SPEED_MIN;
+bool agenticTurnLeftNext = true; // alterna el lado de giro entre maniobras sucesivas
+
+void resetAgentic() {
+  agenticState = AGENTIC_CRUISE;
+  agenticSpeed = SPEED_MIN;
+}
+
+void runAgentic() {
+  unsigned long now = millis();
+
+  // --- Maniobra en curso: retroceder ---
+  if (agenticState == AGENTIC_BACKUP) {
+    motors.setSpeed(SPEED_DEFAULT);
+    motors.backward();
+    if (now - agenticStateStart > AGENTIC_BACKUP_MS) {
+      motors.stop();
+      agenticState = AGENTIC_TURN;
+      agenticStateStart = now;
+    }
+    return;
+  }
+
+  // --- Maniobra en curso: girar ---
+  if (agenticState == AGENTIC_TURN) {
+    motors.setSpeed(SPEED_DEFAULT);
+    if (agenticTurnLeftNext) motors.left(); else motors.right();
+    if (now - agenticStateStart > AGENTIC_TURN_MS) {
+      motors.stop();
+      agenticTurnLeftNext = !agenticTurnLeftNext; // la próxima vez prueba el otro lado
+      agenticSpeed = SPEED_MIN;
+      agenticState = AGENTIC_CRUISE;
+    }
+    return;
+  }
+
+  // --- Crucero: decide en tiempo real según la distancia leída ahora ---
+  float dist = sonar.readDistance();
+  if (dist < 0) dist = 999; // sin eco -> asumir libre
+
+  if (dist <= OBSTACLE_DISTANCE_CM) {
+    // Decisión inmediata: frenar en seco y arrancar la maniobra de esquive
+    motors.stop();
+    agenticState = AGENTIC_BACKUP;
+    agenticStateStart = now;
+    return;
+  }
+
+  // Control de velocidad proporcional a la distancia: acelera con camino
+  // libre, frena progresivamente al acercarse a un obstáculo. La rampa usa
+  // un paso de frenado mayor que el de aceleración (frena más rápido de lo
+  // que acelera, como un vehículo real).
+  int targetSpeed;
+  if (dist >= AGENTIC_BRAKE_DISTANCE_CM) {
+    targetSpeed = SPEED_MAX;
+  } else {
+    float t = (dist - OBSTACLE_DISTANCE_CM) / (float)(AGENTIC_BRAKE_DISTANCE_CM - OBSTACLE_DISTANCE_CM);
+    targetSpeed = SPEED_MIN + (int)(t * (SPEED_MAX - SPEED_MIN));
+  }
+
+  if (targetSpeed > agenticSpeed) {
+    agenticSpeed = min(targetSpeed, agenticSpeed + AGENTIC_ACCEL_STEP);
+  } else if (targetSpeed < agenticSpeed) {
+    agenticSpeed = max(targetSpeed, agenticSpeed - AGENTIC_BRAKE_STEP);
+  }
+
+  motors.setSpeed(agenticSpeed);
+  motors.forward();
 }

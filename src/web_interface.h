@@ -31,6 +31,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       --danger: #ff3b5c;
       --good: #2fe6a0;
       --warn: #ffcf4d;
+      --agentic: #22d3ee;
       --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
     }
@@ -234,26 +235,52 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     .btn-stop:active { transform: scale(0.97); }
     .btn-stop-icon { font-size: 1rem; }
 
-    .btn-auto {
-      width: 100%;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 13px 0;
+    .mode-field label { display: block; margin-bottom: 8px; }
+    .mode-switch {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      background: var(--bg-1);
       border: 1px solid var(--panel-border);
       border-radius: 14px;
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: var(--text-dim);
-      cursor: pointer;
-      background: var(--bg-1);
-      transition: transform 0.08s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      padding: 4px;
     }
-    .btn-auto:active { transform: scale(0.97); }
-    .btn-auto.active {
-      color: #0a1a14;
-      border-color: var(--good);
+    .mode-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      padding: 10px 4px;
+      border: none;
+      border-radius: 11px;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: transform 0.08s ease, background 0.15s ease, color 0.15s ease;
+    }
+    .mode-btn:active { transform: scale(0.96); }
+    .mode-btn .mode-icon { font-size: 1rem; }
+    .mode-btn[data-mode="manual"].active {
+      background: linear-gradient(155deg, var(--accent-bright), var(--accent));
+      color: #10101f;
+      box-shadow: 0 4px 14px rgba(111,111,232,0.4);
+    }
+    .mode-btn[data-mode="auto"].active {
       background: linear-gradient(155deg, #4dffc0, var(--good));
-      box-shadow: 0 4px 16px rgba(47,230,160,0.35);
+      color: #0a1a14;
+      box-shadow: 0 4px 14px rgba(47,230,160,0.35);
+    }
+    .mode-btn[data-mode="agentic"].active {
+      background: linear-gradient(155deg, #7fe9fb, var(--agentic));
+      color: #052a30;
+      box-shadow: 0 4px 14px rgba(34,211,238,0.4);
+    }
+    .mode-hint {
+      font-size: 0.66rem;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 6px;
+      min-height: 1.4em;
     }
 
     .sensor-panel { display: flex; flex-direction: column; gap: 8px; }
@@ -359,9 +386,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span class="btn-stop-icon">⏹</span><span>DETENER</span>
           </button>
 
-          <button class="btn-auto" id="autoBtn">
-            <span>🤖</span><span>AUTÓNOMO</span>
-          </button>
+          <div class="field mode-field">
+            <label>Modo de manejo</label>
+            <div class="mode-switch" id="modeSwitch">
+              <button class="mode-btn active" data-mode="manual">
+                <span class="mode-icon">🕹️</span><span>MANUAL</span>
+              </button>
+              <button class="mode-btn" data-mode="auto">
+                <span class="mode-icon">🧭</span><span>AUTÓNOMO</span>
+              </button>
+              <button class="mode-btn" data-mode="agentic">
+                <span class="mode-icon">⚡</span><span>AGÉNTICO</span>
+              </button>
+            </div>
+            <p class="mode-hint" id="modeHint">D-pad y teclado activos</p>
+          </div>
 
           <div class="sensor-panel">
             <div class="field-head">
@@ -387,7 +426,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const SEND_INTERVAL = 80;          // ms entre reenvíos mientras se mantiene presionado
     const MAX_CONSECUTIVE_FAILURES = 5; // ~400ms sin respuesta -> dejamos de insistir localmente
 
-    let autoMode = false;
+    let driveMode = 'manual'; // 'manual' | 'auto' | 'agentic'
     let speed = 180;
     let activeDir = null;   // dirección que se está enviando en este momento (o null)
     let holdInterval = null;
@@ -400,7 +439,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const speedSlider = document.getElementById('speedSlider');
     const speedDisplay = document.getElementById('speedDisplay');
     const stopBtn = document.getElementById('stopBtn');
-    const autoBtn = document.getElementById('autoBtn');
+    const modeButtons = document.querySelectorAll('.mode-btn[data-mode]');
+    const modeHint = document.getElementById('modeHint');
     const distanceDisplay = document.getElementById('distanceDisplay');
     const sensorBadge = document.getElementById('sensorBadge');
     const gaugeFill = document.getElementById('gaugeFill');
@@ -466,7 +506,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     // ===== D-PAD =====
     function startDir(dir, btn) {
-      if (autoMode || activeDir === dir) return;
+      if (driveMode !== 'manual' || activeDir === dir) return;
       activeDir = dir;
       directionText.textContent = dir.toUpperCase();
       statusDot.className = 'status-dot dot-moving';
@@ -488,7 +528,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     dpadButtons.forEach((btn) => {
       const dir = btn.dataset.dir;
       btn.addEventListener('pointerdown', (e) => {
-        if (autoMode) return;
+        if (driveMode !== 'manual') return;
         e.preventDefault();
         btn.setPointerCapture(e.pointerId);
         if (navigator.vibrate) navigator.vibrate(12);
@@ -498,7 +538,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       btn.addEventListener('pointercancel', doStop);
     });
 
-    stopBtn.addEventListener('click', doStop);
+    // DETENER es el botón de emergencia: si hay un modo automático activo,
+    // primero lo saca de ahí (vuelve a manual) y de paso corta motores;
+    // si ya está en manual, solo corta motores.
+    stopBtn.addEventListener('click', () => {
+      if (driveMode !== 'manual') {
+        setDriveMode('manual');
+      } else {
+        doStop();
+      }
+    });
 
     // ===== SPEED =====
     speedSlider.addEventListener('input', () => {
@@ -507,18 +556,24 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       api(`/speed?value=${speed}`);
     });
 
-    // ===== AUTONOMOUS =====
-    autoBtn.addEventListener('click', () => {
-      autoMode = !autoMode;
-      autoBtn.classList.toggle('active', autoMode);
-      autoBtn.querySelector('span:last-child').textContent = autoMode ? 'AUTÓNOMO (ACTIVO)' : 'AUTÓNOMO';
-      if (autoMode) {
-        doStop();
-        api('/auto/on');
-      } else {
-        api('/auto/off');
-        api('/stop');
-      }
+    // ===== MODO DE MANEJO (manual / autónomo / agéntico) =====
+    const MODE_HINTS = {
+      manual: 'D-pad y teclado activos',
+      auto: 'El carro avanza solo y esquiva obstáculos girando a la izquierda',
+      agentic: 'Acelera y frena según la distancia, decide la maniobra en tiempo real'
+    };
+
+    function setDriveMode(mode) {
+      if (mode === driveMode) return;
+      driveMode = mode;
+      modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      modeHint.textContent = MODE_HINTS[mode] || '';
+      if (mode !== 'manual') doStop(); // suelta el D-pad, el firmware toma el control
+      api(`/mode/${mode}`);
+    }
+
+    modeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setDriveMode(btn.dataset.mode));
     });
 
     // ===== KEYBOARD =====
@@ -531,7 +586,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     };
 
     document.addEventListener('keydown', (e) => {
-      if (autoMode || e.repeat) return;
+      if (driveMode !== 'manual' || e.repeat) return;
       const dir = keyMap[e.key];
       if (!dir) return;
       e.preventDefault();
@@ -540,7 +595,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
 
     document.addEventListener('keyup', (e) => {
-      if (autoMode) return;
+      if (driveMode !== 'manual') return;
       if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
@@ -571,7 +626,7 @@ class WebInterface {
   private:
     MotorController* motors;
     Sonar* sonar;
-    bool* autoModePtr;
+    DriveMode* modePtr;
     volatile unsigned long* lastCmdMillis;
 
     void handleRoot() {
@@ -635,22 +690,27 @@ class WebInterface {
       server.send(200, "text/plain", String(d));
     }
 
-    void handleAutoOn() {
-      *autoModePtr = true;
-      server.send(200, "text/plain", "auto_on");
+    void handleModeManual() {
+      *modePtr = MODE_MANUAL;
+      motors->stop();
+      server.send(200, "text/plain", "manual");
     }
 
-    void handleAutoOff() {
-      *autoModePtr = false;
-      motors->stop();
-      server.send(200, "text/plain", "auto_off");
+    void handleModeAuto() {
+      *modePtr = MODE_AUTO;
+      server.send(200, "text/plain", "auto");
+    }
+
+    void handleModeAgentic() {
+      *modePtr = MODE_AGENTIC;
+      server.send(200, "text/plain", "agentic");
     }
 
   public:
-    void begin(MotorController* m, Sonar* s, bool* autoFlag, volatile unsigned long* lastCmd) {
+    void begin(MotorController* m, Sonar* s, DriveMode* mode, volatile unsigned long* lastCmd) {
       motors = m;
       sonar = s;
-      autoModePtr = autoFlag;
+      modePtr = mode;
       lastCmdMillis = lastCmd;
 
       server.on("/",              std::bind(&WebInterface::handleRoot,     this));
@@ -660,8 +720,9 @@ class WebInterface {
       server.on("/right",         std::bind(&WebInterface::handleRight,    this));
       server.on("/stop",          std::bind(&WebInterface::handleStop,     this));
       server.on("/dist",          std::bind(&WebInterface::handleDistance, this));
-      server.on("/auto/on",       std::bind(&WebInterface::handleAutoOn,   this));
-      server.on("/auto/off",      std::bind(&WebInterface::handleAutoOff,  this));
+      server.on("/mode/manual",   std::bind(&WebInterface::handleModeManual,  this));
+      server.on("/mode/auto",     std::bind(&WebInterface::handleModeAuto,    this));
+      server.on("/mode/agentic",  std::bind(&WebInterface::handleModeAgentic, this));
       server.on("/speed",         std::bind(&WebInterface::handleSpeed,    this));
 
       server.begin();

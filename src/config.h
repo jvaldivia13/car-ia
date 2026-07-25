@@ -12,6 +12,9 @@
 // ===================== OTA =====================
 const char* OTA_HOSTNAME  = "karim-car";
 
+// ===================== MODOS DE MANEJO =====================
+enum DriveMode { MODE_MANUAL, MODE_AUTO, MODE_AGENTIC };
+
 // ===================== PINES MOTORES (L298N) =====================
 // Cableado físico real (no el original de la placa de referencia)
 // Motor A (izquierdo)
@@ -34,9 +37,18 @@ const char* OTA_HOSTNAME  = "karim-car";
 #define SPEED_MAX    255   // máxima
 #define SPEED_DEFAULT 180  // velocidad por defecto
 
-// ===================== AUTÓNOMO =====================
+// ===================== AUTÓNOMO (wall-avoider simple) =====================
 #define OBSTACLE_DISTANCE_CM 25   // distancia para detectar obstáculo
 #define TURN_DURATION_MS     600  // ms que dura girando al esquivar
+
+// ===================== AGÉNTICO (control reactivo, no bloqueante) =====================
+// Reutiliza OBSTACLE_DISTANCE_CM como umbral de frenado en seco / maniobra.
+#define AGENTIC_INTERVAL_MS       50   // frecuencia de evaluación (más reactivo que el autónomo)
+#define AGENTIC_BRAKE_DISTANCE_CM 80   // a partir de acá empieza a frenar progresivamente
+#define AGENTIC_ACCEL_STEP        4    // cuánto sube la velocidad por ciclo (aceleración suave)
+#define AGENTIC_BRAKE_STEP        12   // cuánto baja la velocidad por ciclo (frenado más agresivo)
+#define AGENTIC_BACKUP_MS         300  // ms retrocediendo antes de girar al esquivar
+#define AGENTIC_TURN_MS           500  // ms girando al esquivar
 
 // ===================== WEB SERVER =====================
 #define WEB_PORT 80
