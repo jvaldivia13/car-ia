@@ -51,6 +51,8 @@ DriveMode currentMode = MODE_MANUAL;
 unsigned long lastAutoUpdate = 0;
 const unsigned long AUTO_INTERVAL = 100; // ms entre decisiones autónomas (modo autónomo simple)
 
+AgenticStatus agenticStatus;      // estado del modo agéntico, expuesto en /status
+unsigned long agenticStateStart = 0;
 unsigned long lastAgenticUpdate = 0;
 
 unsigned long lastDistancePoll = 0;
@@ -84,7 +86,7 @@ void setup() {
   setupOTA();
 
   // Iniciar servidor web
-  webUI.begin(&motors, &sonar, &currentMode, &lastCommandMillis);
+  webUI.begin(&motors, &sonar, &currentMode, &lastCommandMillis, &agenticStatus);
 
   Serial.println("\n✅ Sistema listo!");
   Serial.print("  → Abre http://");
@@ -231,41 +233,40 @@ void runAutonomous() {
 
 // ===== MODO AGÉNTICO (control reactivo: acelera/frena según distancia,
 // decide maniobra en tiempo real, todo sin bloquear con delay()) =====
-enum AgenticState { AGENTIC_CRUISE, AGENTIC_BACKUP, AGENTIC_TURN };
-AgenticState agenticState = AGENTIC_CRUISE;
-unsigned long agenticStateStart = 0;
-int agenticSpeed = SPEED_MIN;
-bool agenticTurnLeftNext = true; // alterna el lado de giro entre maniobras sucesivas
+// El estado vive en agenticStatus (declarado arriba) para poder exponerlo
+// tal cual al dashboard vía WebInterface::handleStatus() → GET /status.
 
 void resetAgentic() {
-  agenticState = AGENTIC_CRUISE;
-  agenticSpeed = SPEED_MIN;
+  agenticStatus.state = AGENTIC_CRUISE;
+  agenticStatus.speed = SPEED_MIN;
+  agenticStatus.targetSpeed = SPEED_MIN;
 }
 
 void runAgentic() {
   unsigned long now = millis();
 
   // --- Maniobra en curso: retroceder ---
-  if (agenticState == AGENTIC_BACKUP) {
+  if (agenticStatus.state == AGENTIC_BACKUP) {
     motors.setSpeed(SPEED_DEFAULT);
     motors.backward();
     if (now - agenticStateStart > AGENTIC_BACKUP_MS) {
       motors.stop();
-      agenticState = AGENTIC_TURN;
+      agenticStatus.state = AGENTIC_TURN;
       agenticStateStart = now;
     }
     return;
   }
 
   // --- Maniobra en curso: girar ---
-  if (agenticState == AGENTIC_TURN) {
+  if (agenticStatus.state == AGENTIC_TURN) {
     motors.setSpeed(SPEED_DEFAULT);
-    if (agenticTurnLeftNext) motors.left(); else motors.right();
+    if (agenticStatus.turnLeft) motors.left(); else motors.right();
     if (now - agenticStateStart > AGENTIC_TURN_MS) {
       motors.stop();
-      agenticTurnLeftNext = !agenticTurnLeftNext; // la próxima vez prueba el otro lado
-      agenticSpeed = SPEED_MIN;
-      agenticState = AGENTIC_CRUISE;
+      agenticStatus.turnLeft = !agenticStatus.turnLeft; // la próxima vez prueba el otro lado
+      agenticStatus.speed = SPEED_MIN;
+      agenticStatus.targetSpeed = SPEED_MIN;
+      agenticStatus.state = AGENTIC_CRUISE;
     }
     return;
   }
@@ -277,7 +278,7 @@ void runAgentic() {
   if (dist <= OBSTACLE_DISTANCE_CM) {
     // Decisión inmediata: frenar en seco y arrancar la maniobra de esquive
     motors.stop();
-    agenticState = AGENTIC_BACKUP;
+    agenticStatus.state = AGENTIC_BACKUP;
     agenticStateStart = now;
     return;
   }
@@ -293,13 +294,14 @@ void runAgentic() {
     float t = (dist - OBSTACLE_DISTANCE_CM) / (float)(AGENTIC_BRAKE_DISTANCE_CM - OBSTACLE_DISTANCE_CM);
     targetSpeed = SPEED_MIN + (int)(t * (SPEED_MAX - SPEED_MIN));
   }
+  agenticStatus.targetSpeed = targetSpeed;
 
-  if (targetSpeed > agenticSpeed) {
-    agenticSpeed = min(targetSpeed, agenticSpeed + AGENTIC_ACCEL_STEP);
-  } else if (targetSpeed < agenticSpeed) {
-    agenticSpeed = max(targetSpeed, agenticSpeed - AGENTIC_BRAKE_STEP);
+  if (targetSpeed > agenticStatus.speed) {
+    agenticStatus.speed = min(targetSpeed, agenticStatus.speed + AGENTIC_ACCEL_STEP);
+  } else if (targetSpeed < agenticStatus.speed) {
+    agenticStatus.speed = max(targetSpeed, agenticStatus.speed - AGENTIC_BRAKE_STEP);
   }
 
-  motors.setSpeed(agenticSpeed);
+  motors.setSpeed(agenticStatus.speed);
   motors.forward();
 }

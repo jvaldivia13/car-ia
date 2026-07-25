@@ -15,6 +15,16 @@ const char* OTA_HOSTNAME  = "karim-car";
 // ===================== MODOS DE MANEJO =====================
 enum DriveMode { MODE_MANUAL, MODE_AUTO, MODE_AGENTIC };
 
+// Estado del modo agéntico, expuesto tal cual al dashboard vía /status
+// para poder mostrar sus decisiones en tiempo real.
+enum AgenticState { AGENTIC_CRUISE, AGENTIC_BACKUP, AGENTIC_TURN };
+struct AgenticStatus {
+  AgenticState state = AGENTIC_CRUISE;
+  int speed = 0;        // velocidad actual (rampa de aceleración/frenado)
+  int targetSpeed = 0;  // velocidad objetivo calculada según la distancia
+  bool turnLeft = true; // lado hacia el que gira/girará la próxima maniobra
+};
+
 // ===================== PINES MOTORES (L298N) =====================
 // Cableado físico real (no el original de la placa de referencia)
 // Motor A (izquierdo)

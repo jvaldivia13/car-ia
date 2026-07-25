@@ -283,6 +283,46 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       min-height: 1.4em;
     }
 
+    .agent-panel { display: flex; flex-direction: column; gap: 8px; }
+    .agent-speed {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--agentic);
+    }
+    .agent-decision {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 13px;
+      border-radius: 12px;
+      background: var(--bg-1);
+      border: 1px solid var(--panel-border);
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .agent-decision.maneuvering { border-color: var(--warn); background: rgba(255,207,77,0.08); }
+    .agent-decision-icon {
+      font-size: 1.05rem;
+      color: var(--agentic);
+      flex: none;
+      width: 20px;
+      text-align: center;
+      transition: color 0.2s ease;
+    }
+    .agent-decision.maneuvering .agent-decision-icon { color: var(--warn); }
+    .agent-decision-text { font-size: 0.78rem; font-weight: 600; }
+
+    .agent-log {
+      display: flex; flex-direction: column;
+      max-height: 100px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+    }
+    .agent-log-line { padding: 3px 2px; border-bottom: 1px solid var(--panel-border); }
+    .agent-log-line:first-child { color: var(--agentic); }
+    .agent-log-line:last-child { border-bottom: none; }
+
     .sensor-panel { display: flex; flex-direction: column; gap: 8px; }
     .sensor-badge {
       font-family: var(--font-mono);
@@ -402,6 +442,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <p class="mode-hint" id="modeHint">D-pad y teclado activos</p>
           </div>
 
+          <div class="agent-panel" id="agentPanel" hidden>
+            <div class="field-head">
+              <label>Decisión del agente</label>
+              <span class="agent-speed" id="agentSpeed">— / —</span>
+            </div>
+            <div class="agent-decision" id="agentDecision">
+              <span class="agent-decision-icon" id="agentIcon">●</span>
+              <span class="agent-decision-text" id="agentDecisionText">Esperando datos…</span>
+            </div>
+            <div class="agent-log" id="agentLog"></div>
+          </div>
+
           <div class="sensor-panel">
             <div class="field-head">
               <label>Sensor de distancia</label>
@@ -441,6 +493,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const stopBtn = document.getElementById('stopBtn');
     const modeButtons = document.querySelectorAll('.mode-btn[data-mode]');
     const modeHint = document.getElementById('modeHint');
+    const agentPanel = document.getElementById('agentPanel');
+    const agentSpeedEl = document.getElementById('agentSpeed');
+    const agentDecisionEl = document.getElementById('agentDecision');
+    const agentIconEl = document.getElementById('agentIcon');
+    const agentDecisionTextEl = document.getElementById('agentDecisionText');
+    const agentLog = document.getElementById('agentLog');
     const distanceDisplay = document.getElementById('distanceDisplay');
     const sensorBadge = document.getElementById('sensorBadge');
     const gaugeFill = document.getElementById('gaugeFill');
@@ -468,6 +526,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         gaugeFill.style.background = 'var(--good)';
         sensorBadge.textContent = 'LIBRE';
         sensorBadge.className = 'sensor-badge clear';
+      }
+    }
+
+    // ===== PANEL DE DECISIONES DEL AGENTE (tiempo real) =====
+    let lastAgentDecision = null;
+
+    function logAgentDecision(text) {
+      const time = new Date().toLocaleTimeString('es-ES', { hour12: false });
+      const line = document.createElement('div');
+      line.className = 'agent-log-line';
+      line.textContent = time + '  ' + text;
+      agentLog.prepend(line);
+      while (agentLog.children.length > 6) agentLog.removeChild(agentLog.lastChild);
+    }
+
+    function resetAgentPanel() {
+      lastAgentDecision = null;
+      agentLog.innerHTML = '';
+      agentDecisionTextEl.textContent = 'Esperando datos…';
+      agentIconEl.textContent = '●';
+      agentSpeedEl.textContent = '— / —';
+      agentDecisionEl.classList.remove('maneuvering');
+    }
+
+    function updateAgentUI(agentic) {
+      agentSpeedEl.textContent = agentic.speed + ' / ' + agentic.target;
+
+      const maneuvering = agentic.state === 'backup' || agentic.state === 'turn';
+      agentDecisionEl.classList.toggle('maneuvering', maneuvering);
+
+      let icon = '●';
+      if (agentic.state === 'backup') icon = '⏪';
+      else if (agentic.state === 'turn') icon = agentic.decision.indexOf('izquierda') !== -1 ? '◀' : '▶';
+      else if (agentic.target > agentic.speed + 3) icon = '▲';
+      else if (agentic.target < agentic.speed - 3) icon = '▼';
+      agentIconEl.textContent = icon;
+
+      agentDecisionTextEl.textContent = agentic.decision;
+
+      if (agentic.decision !== lastAgentDecision) {
+        logAgentDecision(agentic.decision);
+        lastAgentDecision = agentic.decision;
       }
     }
 
@@ -568,6 +668,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       driveMode = mode;
       modeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
       modeHint.textContent = MODE_HINTS[mode] || '';
+      agentPanel.hidden = mode !== 'agentic';
+      if (mode === 'agentic') resetAgentPanel();
       if (mode !== 'manual') doStop(); // suelta el D-pad, el firmware toma el control
       api(`/mode/${mode}`);
     }
@@ -599,20 +701,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
-    // Poll de distancia (también sirve de heartbeat de conexión).
-    // 500ms para calzar con el refresco real del sensor en el firmware
-    // (car_controller.ino lee el sonar cada 500ms).
+    // Poll de estado (distancia + decisión del agente si aplica; también
+    // sirve de heartbeat de conexión). 200ms para que las maniobras del
+    // modo agéntico (retroceso 300ms, giro 500ms) se alcancen a ver.
     setInterval(async () => {
       try {
-        const r = await fetch('/dist');
-        const d = await r.text();
-        const val = parseFloat(d);
-        if (!isNaN(val)) updateSensorUI(val);
+        const r = await fetch('/status');
+        const data = await r.json();
+        if (typeof data.distance === 'number') updateSensorUI(data.distance);
+        if (data.agentic) updateAgentUI(data.agentic);
         markConnected();
       } catch (e) {
         markDisconnected();
       }
-    }, 500);
+    }, 200);
 
     console.log('KARIM Car Controller loaded 🚗');
   </script>
@@ -627,6 +729,7 @@ class WebInterface {
     MotorController* motors;
     Sonar* sonar;
     DriveMode* modePtr;
+    AgenticStatus* agenticPtr;
     volatile unsigned long* lastCmdMillis;
 
     void handleRoot() {
@@ -690,6 +793,47 @@ class WebInterface {
       server.send(200, "text/plain", String(d));
     }
 
+    // Estado completo para el dashboard: modo activo, distancia, y si el
+    // modo agéntico está corriendo, su decisión en curso (para mostrarla
+    // en tiempo real, ver panel "Decisión del agente" en el HTML).
+    void handleStatus() {
+      float d = sonar->readDistance();
+      if (d < 0) d = 999;
+
+      const char* modeStr = "manual";
+      if (*modePtr == MODE_AUTO) modeStr = "auto";
+      else if (*modePtr == MODE_AGENTIC) modeStr = "agentic";
+
+      String json = "{\"mode\":\"" + String(modeStr) + "\",\"distance\":" + String(d, 1);
+
+      if (*modePtr == MODE_AGENTIC) {
+        const char* stateStr = "cruise";
+        String decision;
+
+        if (agenticPtr->state == AGENTIC_BACKUP) {
+          stateStr = "backup";
+          decision = "Retrocediendo, obstaculo detectado";
+        } else if (agenticPtr->state == AGENTIC_TURN) {
+          stateStr = "turn";
+          decision = agenticPtr->turnLeft ? "Girando a la izquierda" : "Girando a la derecha";
+        } else if (agenticPtr->targetSpeed > agenticPtr->speed + 3) {
+          decision = "Acelerando";
+        } else if (agenticPtr->targetSpeed < agenticPtr->speed - 3) {
+          decision = "Frenando";
+        } else {
+          decision = "Crucero estable";
+        }
+
+        json += ",\"agentic\":{\"state\":\"" + String(stateStr) + "\"";
+        json += ",\"speed\":" + String(motors->getSpeed());
+        json += ",\"target\":" + String(agenticPtr->targetSpeed);
+        json += ",\"decision\":\"" + decision + "\"}";
+      }
+
+      json += "}";
+      server.send(200, "application/json", json);
+    }
+
     void handleModeManual() {
       *modePtr = MODE_MANUAL;
       motors->stop();
@@ -707,11 +851,12 @@ class WebInterface {
     }
 
   public:
-    void begin(MotorController* m, Sonar* s, DriveMode* mode, volatile unsigned long* lastCmd) {
+    void begin(MotorController* m, Sonar* s, DriveMode* mode, volatile unsigned long* lastCmd, AgenticStatus* agStatus) {
       motors = m;
       sonar = s;
       modePtr = mode;
       lastCmdMillis = lastCmd;
+      agenticPtr = agStatus;
 
       server.on("/",              std::bind(&WebInterface::handleRoot,     this));
       server.on("/forward",       std::bind(&WebInterface::handleForward,  this));
@@ -720,6 +865,7 @@ class WebInterface {
       server.on("/right",         std::bind(&WebInterface::handleRight,    this));
       server.on("/stop",          std::bind(&WebInterface::handleStop,     this));
       server.on("/dist",          std::bind(&WebInterface::handleDistance, this));
+      server.on("/status",        std::bind(&WebInterface::handleStatus,   this));
       server.on("/mode/manual",   std::bind(&WebInterface::handleModeManual,  this));
       server.on("/mode/auto",     std::bind(&WebInterface::handleModeAuto,    this));
       server.on("/mode/agentic",  std::bind(&WebInterface::handleModeAgentic, this));
