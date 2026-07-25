@@ -101,7 +101,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       white-space: nowrap;
     }
     .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
-    .dot-online { background: var(--good); box-shadow: 0 0 6px var(--good); }
+    .dot-online { background: var(--good); box-shadow: 0 0 6px var(--good); animation: pulse 1.6s infinite; }
     .dot-offline { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
     .dot-moving { background: var(--warn); box-shadow: 0 0 6px var(--warn); animation: pulse 0.6s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
@@ -256,16 +256,51 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       box-shadow: 0 4px 16px rgba(47,230,160,0.35);
     }
 
-    .distance-row {
-      text-align: center;
-      font-size: 0.72rem;
+    .sensor-panel { display: flex; flex-direction: column; gap: 8px; }
+    .sensor-badge {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--bg-1);
       color: var(--text-dim);
+      transition: background 0.2s ease, color 0.2s ease;
     }
-    .distance-row span {
+    .sensor-badge.clear { background: var(--good); color: #0a1a14; }
+    .sensor-badge.near  { background: var(--danger); color: #250a0e; }
+
+    .distance-readout { display: flex; align-items: baseline; gap: 5px; }
+    .distance-readout .value {
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
-      font-weight: 700;
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1;
       color: var(--accent-bright);
+    }
+    .distance-readout .unit { font-size: 0.75rem; color: var(--text-dim); }
+
+    .gauge-track {
+      position: relative;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--bg-1);
+      overflow: hidden;
+    }
+    .gauge-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: var(--good);
+      border-radius: 4px;
+      transition: width 0.25s ease, background 0.2s ease;
+    }
+    .gauge-threshold {
+      position: absolute; top: -2px; bottom: -2px;
+      width: 2px;
+      background: var(--text);
+      opacity: 0.4;
     }
 
     /* ===== RESPONSIVE: landscape / tablet / desktop ===== */
@@ -328,7 +363,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span>🤖</span><span>AUTÓNOMO</span>
           </button>
 
-          <div class="distance-row">Distancia: <span id="distanceDisplay">—</span> cm</div>
+          <div class="sensor-panel">
+            <div class="field-head">
+              <label>Sensor de distancia</label>
+              <span class="sensor-badge" id="sensorBadge">SIN DATOS</span>
+            </div>
+            <div class="distance-readout">
+              <span class="value" id="distanceDisplay">—</span><span class="unit">cm</span>
+            </div>
+            <div class="gauge-track">
+              <div class="gauge-fill" id="gaugeFill"></div>
+              <div class="gauge-threshold" id="gaugeThreshold"></div>
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -355,7 +402,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     const stopBtn = document.getElementById('stopBtn');
     const autoBtn = document.getElementById('autoBtn');
     const distanceDisplay = document.getElementById('distanceDisplay');
+    const sensorBadge = document.getElementById('sensorBadge');
+    const gaugeFill = document.getElementById('gaugeFill');
+    const gaugeThreshold = document.getElementById('gaugeThreshold');
     const dpadButtons = document.querySelectorAll('.dpad-btn[data-dir]');
+
+    // Debe coincidir con OBSTACLE_DISTANCE_CM en config.h
+    const OBSTACLE_THRESHOLD_CM = 25;
+    const GAUGE_MAX_CM = 100; // rango visible del gauge (el sensor puede leer más lejos)
+    gaugeThreshold.style.left = Math.min(100, (OBSTACLE_THRESHOLD_CM / GAUGE_MAX_CM) * 100) + '%';
+
+    function updateSensorUI(distance) {
+      distanceDisplay.textContent = distance.toFixed(0);
+      const pct = Math.max(0, Math.min(100, (distance / GAUGE_MAX_CM) * 100));
+      gaugeFill.style.width = pct + '%';
+      if (distance < OBSTACLE_THRESHOLD_CM) {
+        gaugeFill.style.background = 'var(--danger)';
+        sensorBadge.textContent = 'OBSTÁCULO';
+        sensorBadge.className = 'sensor-badge near';
+      } else if (distance < OBSTACLE_THRESHOLD_CM * 2) {
+        gaugeFill.style.background = 'var(--warn)';
+        sensorBadge.textContent = 'CERCA';
+        sensorBadge.className = 'sensor-badge';
+      } else {
+        gaugeFill.style.background = 'var(--good)';
+        sensorBadge.textContent = 'LIBRE';
+        sensorBadge.className = 'sensor-badge clear';
+      }
+    }
 
     // ===== FETCH HELPERS =====
     // No hay WebSocket en el firmware (solo HTTP), así que el estado de
@@ -470,17 +544,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       if (keyMap[e.key] && keyMap[e.key] !== 'stop') doStop();
     });
 
-    // Poll de distancia (también sirve de heartbeat de conexión)
+    // Poll de distancia (también sirve de heartbeat de conexión).
+    // 500ms para calzar con el refresco real del sensor en el firmware
+    // (car_controller.ino lee el sonar cada 500ms).
     setInterval(async () => {
       try {
         const r = await fetch('/dist');
         const d = await r.text();
-        if (d) distanceDisplay.textContent = parseFloat(d).toFixed(0);
+        const val = parseFloat(d);
+        if (!isNaN(val)) updateSensorUI(val);
         markConnected();
       } catch (e) {
         markDisconnected();
       }
-    }, 2000);
+    }, 500);
 
     console.log('KARIM Car Controller loaded 🚗');
   </script>
