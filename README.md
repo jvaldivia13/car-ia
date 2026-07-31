@@ -16,17 +16,19 @@ Control remoto + autónomo para carrito con ESP32, L298N y sensor ultrasónico.
 ## Conexiones
 
 ```
-ESP32 → L298N
-GPIO 16 → IN1
-GPIO 17 → IN2
-GPIO 21 → ENA (PWM)
-GPIO 18 → IN3
-GPIO 19 → IN4
-GPIO 22 → ENB (PWM)
+ESP32 → L298N (Motor A - izquierdo)
+GPIO 14 → IN1
+GPIO 27 → IN2
+GPIO 12 → ENA (PWM)
+
+ESP32 → L298N (Motor B - derecho)
+GPIO 26 → IN3
+GPIO 25 → IN4
+GPIO 13 → ENB (PWM)
 
 ESP32 → HC-SR04
-GPIO 26 → Trig
-GPIO 27 → Echo
+GPIO 4  → Trig
+GPIO 17 → Echo
 ```
 
 ## Primer despliegue (USB)

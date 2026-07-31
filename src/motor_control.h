@@ -68,26 +68,6 @@ class MotorController {
       analogWrite(MOTOR_B_ENB, currentSpeed);
     }
 
-    void forwardLeft() {
-      // Curva suave a la izquierda: motor izquierdo más lento
-      digitalWrite(MOTOR_A_IN1, HIGH);
-      digitalWrite(MOTOR_A_IN2, LOW);
-      digitalWrite(MOTOR_B_IN3, HIGH);
-      digitalWrite(MOTOR_B_IN4, LOW);
-      analogWrite(MOTOR_A_ENA, currentSpeed * 0.5);
-      analogWrite(MOTOR_B_ENB, currentSpeed);
-    }
-
-    void forwardRight() {
-      // Curva suave a la derecha: motor derecho más lento
-      digitalWrite(MOTOR_A_IN1, HIGH);
-      digitalWrite(MOTOR_A_IN2, LOW);
-      digitalWrite(MOTOR_B_IN3, HIGH);
-      digitalWrite(MOTOR_B_IN4, LOW);
-      analogWrite(MOTOR_A_ENA, currentSpeed);
-      analogWrite(MOTOR_B_ENB, currentSpeed * 0.5);
-    }
-
     void stop() {
       digitalWrite(MOTOR_A_IN1, LOW);
       digitalWrite(MOTOR_A_IN2, LOW);
